@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Brackify",
+    "slug": "brackify",
+    "scheme": "brackify",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.brackify.app", "googleServicesFile": "./GoogleService-Info.plist" },
+    "android": { "package": "com.brackify.app", "googleServicesFile": "./google-services.json" },
+    "plugins": ["expo-router", "expo-apple-authentication"],
+    "experiments": { "typedRoutes": true }
+  }
+}

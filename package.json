@@ -1,0 +1,12 @@
+{
+  "name": "brackify",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=@brackify/web",
+    "dev:mobile": "npm run start --workspace=@brackify/mobile",
+    "build:web": "npm run build --workspace=@brackify/web",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

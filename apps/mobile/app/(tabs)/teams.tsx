@@ -1,0 +1,12 @@
+import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
+import { palette, ScreenTitle, TeamMark } from '../../components'
+import { useTournamentData } from '../../tournament-data'
+
+export default function TeamsScreen() {
+  const { tournament, teams, players, loading } = useTournamentData()
+  if (loading) return <View style={styles.empty}><Text>Loading teams…</Text></View>
+  if (!tournament) return <View style={styles.empty}><Text style={styles.emptyTitle}>No active tournament</Text><Text style={styles.emptyCopy}>Teams will appear here once you join a tournament.</Text></View>
+  return <ScrollView style={styles.screen} contentContainerStyle={styles.content}><ScreenTitle eyebrow={`${teams.length} SAVED TEAMS`} title="Teams"><Text style={styles.subtitle}>{tournament.name}</Text></ScreenTitle>{teams.length ? teams.map(team => { const names = team.playerIds.map(id => players.find(player => player.id === id)?.name).filter(Boolean).join(', '); return <View key={team.id} style={styles.card}><TeamMark label={team.name.split(' ').map(word => word[0]).join('').slice(0, 2)} color={team.color}/><View style={{ flex: 1 }}><Text style={styles.name}>{team.name}</Text><Text numberOfLines={1} style={styles.players}>{names || `${team.playerIds.length} players`}</Text></View><Ionicons name="chevron-forward" color="#9AA4B2" size={19}/></View> }) : <View style={styles.empty}><Text style={styles.emptyTitle}>Teams not generated</Text><Text style={styles.emptyCopy}>The organizer will publish teams when they are ready.</Text></View>}</ScrollView>
+}
+const styles = StyleSheet.create({ screen: { flex: 1, backgroundColor: palette.canvas }, content: { paddingTop: 42, paddingBottom: 30 }, empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: palette.canvas, gap: 8 }, emptyTitle: { fontSize: 17, fontWeight: '700', color: palette.ink }, emptyCopy: { fontSize: 12, color: palette.muted, textAlign: 'center' }, subtitle: { fontSize: 12, color: palette.muted, marginTop: 5 }, card: { marginHorizontal: 20, marginBottom: 10, padding: 14, borderRadius: 11, borderWidth: 1, borderColor: palette.line, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', gap: 11 }, name: { color: '#374151', fontSize: 14, fontWeight: '700', marginBottom: 4 }, players: { color: palette.muted, fontSize: 10, maxWidth: 235 } })

@@ -1,0 +1,31 @@
+{
+  "name": "@brackify/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@brackify/firebase": "*",
+    "@expo/vector-icons": "^15.0.0",
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "expo": "~55.0.0",
+    "expo-apple-authentication": "~55.0.15",
+    "expo-auth-session": "~55.0.17",
+    "expo-router": "~55.0.0",
+    "expo-status-bar": "~3.0.0",
+    "expo-web-browser": "~55.0.18",
+    "react": "19.2.0",
+    "react-native": "0.83.0",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.23.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.0",
+    "@types/react": "~19.2.0"
+  }
+}
