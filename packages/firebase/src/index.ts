@@ -67,6 +67,8 @@ export type StoredTournament = {
   maxTeams: number
   playerNames: string[]
   inviteCode: string
+  imageUrl?: string
+  passwordProtected?: boolean
 }
 
 export type CreateTournamentInput = Omit<StoredTournament, 'id' | 'organizerId' | 'memberIds' | 'inviteCode'>

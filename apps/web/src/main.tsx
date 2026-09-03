@@ -4,14 +4,15 @@ import { createUserWithEmailAndPassword, GoogleAuthProvider, onAuthStateChanged,
 import './firebase'
 import { auth } from './firebase'
 import { addTournamentPlayer, createTournament, ensureUserProfile, generateDoubleEliminationBracket, generateRoundRobinSchedule, generateSingleEliminationBracket, joinTournamentByCode, recordMatchResult, saveTeams, saveUserProfile, subscribeToMatches, subscribeToPlayers, subscribeToTeams, subscribeToTournaments, type StoredTournament, type TournamentMatch, type TournamentPlayer, type UserProfile } from '@brackify/firebase'
+import { uploadTournamentImage } from './cloudinary'
 import { Bell, ChevronDown, CircleHelp, ClipboardList, Crown, Grid2X2, LayoutDashboard, MapPin, Menu, MoreHorizontal, Play, Plus, Search, Settings, ShieldCheck, Sparkles, Trophy, Users, X } from 'lucide-react'
 import './styles.css'
 
 type Team = { id: string; name: string; initials: string; color: string; members: number; playerIds: string[] }
-type Tournament = { name: string; subtitle: string; format: string; location: string; date: string; players: string[]; teamCount: number }
+type Tournament = { name: string; subtitle: string; game: string; format: string; location: string; date: string; players: string[]; teamCount: number; visibility: 'private' | 'public' }
 
 const teamTemplates = ['Falcons', 'Wolves', 'Knights', 'Ravens', 'Sharks', 'Titans', 'Vipers', 'Owls']
-const emptyTournament: Tournament = { name: '', subtitle: '', format: 'Single elimination', location: '', date: '', players: [], teamCount: 4 }
+const emptyTournament: Tournament = { name: '', subtitle: '', game: '', format: 'Single elimination', location: '', date: '', players: [], teamCount: 4, visibility: 'private' }
 
 function secureShuffle<T>(items: T[]) {
   const shuffled = [...items]
@@ -30,7 +31,7 @@ function secureShuffle<T>(items: T[]) {
 }
 
 function fromStoredTournament(tournament: StoredTournament): Tournament {
-  return { name: tournament.name, subtitle: tournament.description || tournament.game, format: tournament.format, location: tournament.location, date: tournament.date, players: tournament.playerNames, teamCount: tournament.maxTeams }
+  return { name: tournament.name, subtitle: tournament.description || tournament.game, game: tournament.game, format: tournament.format, location: tournament.location, date: tournament.date, players: tournament.playerNames, teamCount: tournament.maxTeams, visibility: tournament.visibility }
 }
 
 function Avatar({ initials, color = '#5063ff' }: { initials: string; color?: string }) {
@@ -60,6 +61,7 @@ function App() {
   const [matches, setMatches] = useState<TournamentMatch[]>([])
   const [selectedMatch, setSelectedMatch] = useState<TournamentMatch | null>(null)
   const [joinCode, setJoinCode] = useState('')
+  const [tournamentImage, setTournamentImage] = useState<File | null>(null)
 
   useEffect(() => onAuthStateChanged(auth, currentUser => { setUser(currentUser); setAuthLoading(false) }), [])
   useEffect(() => {
@@ -92,7 +94,7 @@ function App() {
     if (selectedTournamentId) void saveTeams(selectedTournamentId, generated.map(({ id, name, color, playerIds }) => ({ id, name, color, playerIds }))).then(() => notify('Balanced teams saved')).catch(() => notify('Could not save generated teams'))
     else notify('Balanced teams generated')
   }
-  const openCreate = () => { setDraft(emptyTournament); setNewPlayer(''); setDialog('create') }
+  const openCreate = () => { setDraft(emptyTournament); setNewPlayer(''); setTournamentImage(null); setDialog('create') }
   const addPlayer = () => {
     const name = newPlayer.trim()
     if (!name || draft.players.includes(name)) return
@@ -102,7 +104,8 @@ function App() {
     if (!draft.name.trim() || draft.players.length < 2) { notify('Add a name and at least two players'); return }
     setSavingTournament(true)
     try {
-      const stored = await createTournament(user!.uid, { name: draft.name.trim(), description: draft.subtitle.trim() || 'Tournament', game: 'General', location: draft.location, date: draft.date, format: draft.format, visibility: 'private', maxTeams: draft.teamCount, playerNames: draft.players })
+      const imageUrl = tournamentImage ? await uploadTournamentImage(tournamentImage) : undefined
+      const stored = await createTournament(user!.uid, { name: draft.name.trim(), description: draft.subtitle.trim() || 'Tournament', game: draft.game.trim() || 'General', location: draft.location, date: draft.date, format: draft.format, visibility: draft.visibility, maxTeams: draft.teamCount, playerNames: draft.players, imageUrl })
       setTournament(fromStoredTournament(stored)); setSelectedTournamentId(stored.id); setTeams([]); setDialog(null); setActive('Teams'); notify('Tournament created — generate your teams')
     } catch { notify('Could not save tournament. Check Firestore rules.') } finally { setSavingTournament(false) }
   }
@@ -150,7 +153,7 @@ function App() {
     {dialog === 'share' && <div className="modal-wrap"><div className="modal"><button className="close" onClick={() => setDialog(null)}><X/></button><span className="modal-icon"><Sparkles/></span><h2>Invite players</h2><p>Anyone signed in can join this tournament with this code.</p><div className="invite-code">{savedTournaments.find(item => item.id === selectedTournamentId)?.inviteCode || 'Open a saved tournament'}</div><button className="button primary wide" onClick={() => { const code = savedTournaments.find(item => item.id === selectedTournamentId)?.inviteCode; if (code) { navigator.clipboard?.writeText(code); notify('Invite code copied') } }}>Copy invite code</button></div></div>}
     {dialog === 'join' && <div className="modal-wrap"><div className="modal"><button className="close" onClick={() => setDialog(null)}><X/></button><span className="modal-icon"><Users/></span><h2>Join a tournament</h2><p>Enter the eight-character code shared by the organizer.</p><input className="modal-input invite-input" autoFocus value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())} maxLength={8} placeholder="ABCD1234"/><button className="button primary wide" onClick={() => joinTournamentByCode(user.uid, joinCode).then(id => { setSelectedTournamentId(id); setDialog(null); setActive('All tournaments'); notify('You joined the tournament') }).catch(error => notify(error instanceof Error ? error.message : 'Could not join tournament'))}>Join tournament</button></div></div>}
     {dialog === 'app' && <div className="modal-wrap"><div className="modal"><button className="close" onClick={() => setDialog(null)}><X/></button><span className="modal-icon"><Sparkles/></span><h2>Get Brackify on mobile</h2><p>The iPhone and Android apps are ready for testing. Store download links will appear here once they are published.</p><button className="button primary wide" onClick={() => { window.location.href = 'brackify://'; notify('Opening the Brackify app…') }}>Open Brackify app</button></div></div>}
-    {dialog === 'create' && <div className="modal-wrap"><div className="modal create-modal"><button className="close" onClick={() => setDialog(null)}><X/></button><span className="modal-icon"><Plus/></span><h2>Create a tournament</h2><p>Set up the basics, then we’ll make your teams.</p><label>Tournament name<input autoFocus value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder="Friday Night Cup"/></label><label>Event subtitle<input value={draft.subtitle} onChange={e => setDraft(d => ({ ...d, subtitle: e.target.value }))} placeholder="Summer Showdown"/></label><div className="form-two"><label>Format<select value={draft.format} onChange={e => setDraft(d => ({ ...d, format: e.target.value }))}><option>Single elimination</option><option>Round robin</option><option>Double elimination</option></select></label><label>Teams<select value={draft.teamCount} onChange={e => setDraft(d => ({ ...d, teamCount: Number(e.target.value) }))}><option value="2">2 teams</option><option value="4">4 teams</option><option value="8">8 teams</option></select></label></div><div className="form-two"><label>Location<input value={draft.location} onChange={e => setDraft(d => ({ ...d, location: e.target.value }))} placeholder="Venue or online"/></label><label>Date & time<input value={draft.date} onChange={e => setDraft(d => ({ ...d, date: e.target.value }))} placeholder="Aug 3, 6:00 PM"/></label></div><label>Players <small>{draft.players.length} added</small><div className="add-player"><input value={newPlayer} onChange={e => setNewPlayer(e.target.value)} onKeyDown={e => e.key === 'Enter' && addPlayer()} placeholder="Add a player name"/><button type="button" onClick={addPlayer}>Add</button></div></label>{draft.players.length > 0 && <div className="player-chips">{draft.players.map(p => <button key={p} onClick={() => setDraft(d => ({ ...d, players: d.players.filter(x => x !== p) }))}>{p}<X size={11}/></button>)}</div>}<button disabled={savingTournament} className="button primary wide" onClick={saveTournament}>{savingTournament ? 'Creating…' : 'Create tournament'}</button></div></div>}
+    {dialog === 'create' && <div className="modal-wrap"><div className="modal create-modal"><button className="close" onClick={() => setDialog(null)}><X/></button><span className="modal-icon"><Plus/></span><h2>Create a tournament</h2><p>Set up the basics, then we’ll make your teams.</p><label>Tournament name<input autoFocus value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder="Friday Night Cup"/></label><label>Event subtitle<input value={draft.subtitle} onChange={e => setDraft(d => ({ ...d, subtitle: e.target.value }))} placeholder="Summer Showdown"/></label><div className="form-two"><label>Format<select value={draft.format} onChange={e => setDraft(d => ({ ...d, format: e.target.value }))}><option>Single elimination</option><option>Round robin</option><option>Double elimination</option></select></label><label>Teams<select value={draft.teamCount} onChange={e => setDraft(d => ({ ...d, teamCount: Number(e.target.value) }))}><option value="2">2 teams</option><option value="4">4 teams</option><option value="8">8 teams</option></select></label></div><div className="form-two"><label>Location<input value={draft.location} onChange={e => setDraft(d => ({ ...d, location: e.target.value }))} placeholder="Venue or online"/></label><label>Date & time<input value={draft.date} onChange={e => setDraft(d => ({ ...d, date: e.target.value }))} placeholder="Aug 3, 6:00 PM"/></label></div><label>Tournament image <small>Optional · 5 MB max</small><input type="file" accept="image/*" onChange={event => setTournamentImage(event.target.files?.[0] || null)}/>{tournamentImage && <span className="image-file-name">{tournamentImage.name}</span>}</label><label>Players <small>{draft.players.length} added</small><div className="add-player"><input value={newPlayer} onChange={e => setNewPlayer(e.target.value)} onKeyDown={e => e.key === 'Enter' && addPlayer()} placeholder="Add a player name"/><button type="button" onClick={addPlayer}>Add</button></div></label>{draft.players.length > 0 && <div className="player-chips">{draft.players.map(p => <button key={p} onClick={() => setDraft(d => ({ ...d, players: d.players.filter(x => x !== p) }))}>{p}<X size={11}/></button>)}</div>}<button disabled={savingTournament} className="button primary wide" onClick={saveTournament}>{savingTournament ? (tournamentImage ? 'Uploading image…' : 'Creating…') : 'Create tournament'}</button></div></div>}
   </main>
 }
 
