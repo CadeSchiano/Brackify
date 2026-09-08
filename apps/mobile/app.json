@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": { "supportsTablet": true, "bundleIdentifier": "com.brackify.app", "googleServicesFile": "./GoogleService-Info.plist" },
     "android": { "package": "com.brackify.app", "googleServicesFile": "./google-services.json" },
-    "plugins": ["expo-router", "expo-apple-authentication"],
+    "plugins": ["expo-router", "expo-apple-authentication", ["expo-image-picker", { "photosPermission": "Allow Brackify to choose tournament images." }]],
     "experiments": { "typedRoutes": true }
   }
 }
