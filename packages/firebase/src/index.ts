@@ -90,6 +90,10 @@ export async function createTournament(userId: string, input: CreateTournamentIn
   return { id: ref.id, ...input, inviteCode: code, organizerId: userId, memberIds: [userId] } as StoredTournament
 }
 
+export async function updateTournament(tournamentId: string, updates: Partial<Omit<StoredTournament, 'id' | 'organizerId' | 'memberIds' | 'inviteCode'>>) {
+  await updateDoc(doc(db, 'tournaments', tournamentId), { ...updates, updatedAt: serverTimestamp() })
+}
+
 export async function joinTournamentByCode(userId: string, rawCode: string) {
   const code = rawCode.trim().toUpperCase()
   const invitation = await getDoc(doc(db, 'invites', code))
