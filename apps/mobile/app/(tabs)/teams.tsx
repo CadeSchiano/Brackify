@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import {
   addTournamentPlayer,
+  deleteTournamentTeams,
   removeTournamentPlayer,
   saveTeams,
   updateTournament,
@@ -265,6 +266,7 @@ export default function TeamsScreen() {
               {teams.length ? "Randomize teams again" : "Generate random teams"}
             </Text>
           </Pressable>
+          {teams.length > 0 && <Pressable style={{ alignItems: "center", padding: 8 }} onPress={() => Alert.alert("Delete teams?", "This removes team assignments but keeps your player roster.", [{ text: "Cancel", style: "cancel" }, { text: "Delete", style: "destructive", onPress: () => deleteTournamentTeams(tournament.id).catch(error => Alert.alert("Could not delete teams", error instanceof Error ? error.message : "Please try again.")) }])}><Text style={{ color: "#C44955", fontSize: 12, fontWeight: "700" }}>Delete teams</Text></Pressable>}
           <View style={s.addRow}>
             <TextInput
               style={s.input}

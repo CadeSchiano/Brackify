@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react'
-import { subscribeToMatches, subscribeToPlayers, subscribeToTeams, subscribeToTournaments, type StoredTeam, type StoredTournament, type TournamentMatch, type TournamentPlayer } from '@brackify/firebase'
+import { seedTournamentPlayers, subscribeToMatches, subscribeToPlayers, subscribeToTeams, subscribeToTournaments, type StoredTeam, type StoredTournament, type TournamentMatch, type TournamentPlayer } from '@brackify/firebase'
 import { auth } from './firebase/client'
 
 type TournamentData = {
@@ -43,6 +43,12 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     const unsubscribeMatches = subscribeToMatches(tournament.id, setMatches)
     return () => { unsubscribeTeams(); unsubscribePlayers(); unsubscribeMatches() }
   }, [tournament?.id])
+
+  // Repair tournaments created before the roster records were written successfully.
+  useEffect(() => {
+    if (!tournament || players.length || !tournament.playerNames?.length || auth.currentUser?.uid !== tournament.organizerId) return
+    void seedTournamentPlayers(tournament.id, tournament.playerNames)
+  }, [tournament?.id, tournament?.organizerId, tournament?.playerNames?.join('|'), players.length])
 
   const value = useMemo(() => ({ tournaments, tournament, teams, players, matches, loading, selectTournament: setSelectedTournamentId }), [tournaments, tournament, teams, players, matches, loading])
   return <TournamentContext.Provider value={value}>{children}</TournamentContext.Provider>

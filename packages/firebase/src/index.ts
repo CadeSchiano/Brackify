@@ -69,6 +69,7 @@ export type StoredTournament = {
   inviteCode: string
   imageUrl?: string
   passwordProtected?: boolean
+  status?: 'active' | 'completed'
 }
 
 export type CreateTournamentInput = Omit<StoredTournament, 'id' | 'organizerId' | 'memberIds' | 'inviteCode'>
@@ -112,7 +113,7 @@ export async function joinTournamentByCode(userId: string, rawCode: string) {
 
 export function subscribeToTournaments(userId: string, onChange: (tournaments: StoredTournament[]) => void, onError: (error: Error) => void) {
   const memberships = query(collection(db, 'tournaments'), where('memberIds', 'array-contains', userId))
-  return onSnapshot(memberships, snapshot => onChange(snapshot.docs.map(item => ({ id: item.id, ...item.data() }) as StoredTournament)), onError)
+  return onSnapshot(memberships, snapshot => onChange(snapshot.docs.map(item => ({ id: item.id, ...item.data() }) as StoredTournament).filter(item => item.status !== 'completed')), onError)
 }
 
 export type TournamentPlayer = { id: string; name: string; checkedIn: boolean }
@@ -135,10 +136,8 @@ export async function addTournamentPlayer(tournamentId: string, name: string) {
   if (!tournamentSnapshot.exists()) throw new Error('Tournament not found.')
   if (rosterSnapshot.docs.some(player => String(player.data().name).trim().toLocaleLowerCase() === trimmedName.toLocaleLowerCase())) throw new Error('That player is already on the roster.')
   const ref = doc(playersRef(tournamentId))
-  const playerNames = Array.isArray(tournamentSnapshot.data().playerNames) ? tournamentSnapshot.data().playerNames : []
   const batch = writeBatch(db)
   batch.set(ref, { name: trimmedName, checkedIn: false, createdAt: serverTimestamp() })
-  batch.update(tournamentRef, { playerNames: [...playerNames, trimmedName], updatedAt: serverTimestamp() })
   await batch.commit()
   return { id: ref.id, name: trimmedName, checkedIn: false } as TournamentPlayer
 }
@@ -147,15 +146,12 @@ export async function removeTournamentPlayer(tournamentId: string, playerId: str
   const tournamentRef = doc(db, 'tournaments', tournamentId)
   const [tournamentSnapshot, playerSnapshot, teamsSnapshot] = await Promise.all([getDoc(tournamentRef), getDoc(doc(playersRef(tournamentId), playerId)), getDocs(teamsRef(tournamentId))])
   if (!tournamentSnapshot.exists() || !playerSnapshot.exists()) return
-  const removedName = String(playerSnapshot.data().name)
-  const playerNames = Array.isArray(tournamentSnapshot.data().playerNames) ? tournamentSnapshot.data().playerNames : []
   const batch = writeBatch(db)
   batch.delete(playerSnapshot.ref)
   teamsSnapshot.docs.forEach(team => {
     const playerIds = (team.data().playerIds || []).filter((id: string) => id !== playerId)
     batch.update(team.ref, { playerIds, updatedAt: serverTimestamp() })
   })
-  batch.update(tournamentRef, { playerNames: playerNames.filter((name: string) => name !== removedName), updatedAt: serverTimestamp() })
   await batch.commit()
 }
 
@@ -166,6 +162,13 @@ export function subscribeToPlayers(tournamentId: string, onChange: (players: Tou
 export async function saveTeams(tournamentId: string, teams: StoredTeam[]) {
   const batch = writeBatch(db)
   teams.forEach(team => batch.set(doc(teamsRef(tournamentId), team.id), { ...team, updatedAt: serverTimestamp() }))
+  await batch.commit()
+}
+
+export async function deleteTournamentTeams(tournamentId: string) {
+  const snapshot = await getDocs(teamsRef(tournamentId))
+  const batch = writeBatch(db)
+  snapshot.docs.forEach(team => batch.delete(team.ref))
   await batch.commit()
 }
 
