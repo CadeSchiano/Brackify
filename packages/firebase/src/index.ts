@@ -1,5 +1,5 @@
 import { getApp, getApps, initializeApp } from 'firebase/app'
-import { addDoc, collection, doc, getDoc, getDocs, getFirestore, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { addDoc, arrayUnion, collection, doc, getDoc, getDocs, getFirestore, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
 
 export const firebaseConfig = {
@@ -101,13 +101,7 @@ export async function joinTournamentByCode(userId: string, rawCode: string) {
   if (!invitation.exists()) throw new Error('Invite code not found.')
   const tournamentId = String(invitation.data().tournamentId)
   const tournamentRef = doc(db, 'tournaments', tournamentId)
-  await runTransaction(db, async transaction => {
-    const snapshot = await transaction.get(tournamentRef)
-    if (!snapshot.exists()) throw new Error('Tournament no longer exists.')
-    const tournament = snapshot.data() as StoredTournament
-    if (tournament.memberIds.includes(userId)) return
-    transaction.update(tournamentRef, { memberIds: [...tournament.memberIds, userId], lastJoinCode: code, updatedAt: serverTimestamp() })
-  })
+  await updateDoc(tournamentRef, { memberIds: arrayUnion(userId), lastJoinCode: code, updatedAt: serverTimestamp() })
   return tournamentId
 }
 

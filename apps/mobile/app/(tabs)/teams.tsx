@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,7 +15,6 @@ import {
   deleteTournamentTeams,
   removeTournamentPlayer,
   saveTeams,
-  updateTournament,
   type StoredTeam,
 } from "@brackify/firebase";
 import { auth } from "../../firebase/client";
@@ -31,6 +31,7 @@ const teamNames = [
   "Vipers",
   "Owls",
 ];
+const nameCategories: Record<string, string[]> = { Animals: ["Falcons", "Wolves", "Ravens", "Sharks", "Tigers", "Cobras", "Owls", "Bears"], Fantasy: ["Dragons", "Knights", "Wizards", "Phoenixes", "Titans", "Giants", "Runes", "Griffins"], Gaming: ["Raiders", "Vipers", "Ninjas", "Spartans", "Rogues", "Legends", "Blitz", "Quest"], Sports: ["Strikers", "Rockets", "Chargers", "Comets", "Storm", "Heat", "Hawks", "United"], Space: ["Nova", "Orbits", "Comets", "Cosmos", "Eclipse", "Astros", "Quasar", "Galaxy"], Funny: ["Pickles", "Waffles", "Pandas", "Nachos", "Potatoes", "Unicorns", "Socks", "Bananas"] };
 const colors = [
   "#D6FF3F",
   "#FF6B71",
@@ -40,6 +41,20 @@ const colors = [
   "#63D9B8",
   "#FF9A7B",
   "#81B9FF",
+];
+const teamColorOptions = [
+  { name: "Lime", value: "#D6FF3F" }, { name: "Red", value: "#FF6B71" },
+  { name: "Purple", value: "#8A7CFF" }, { name: "Blue", value: "#55C8FF" },
+  { name: "Gold", value: "#FFC267" }, { name: "Green", value: "#63D9B8" },
+  { name: "Coral", value: "#FF9A7B" }, { name: "Sky", value: "#81B9FF" },
+];
+const colorWheelOptions = [
+  { name: "Red", value: "#FF5C5C" }, { name: "Orange", value: "#FF914D" },
+  { name: "Gold", value: "#FFC267" }, { name: "Yellow", value: "#E8DB4A" },
+  { name: "Green", value: "#63D9B8" }, { name: "Teal", value: "#45C9C3" },
+  { name: "Sky", value: "#55C8FF" }, { name: "Blue", value: "#638CFF" },
+  { name: "Purple", value: "#8A7CFF" }, { name: "Violet", value: "#B77CFF" },
+  { name: "Pink", value: "#EF79B5" }, { name: "Coral", value: "#FF9A7B" },
 ];
 
 function shuffle<T>(items: T[]) {
@@ -65,6 +80,8 @@ export default function TeamsScreen() {
   >("teamCount");
   const [teamCount, setTeamCount] = useState(4);
   const [playersPerTeam, setPlayersPerTeam] = useState("4");
+  const [nameCategory, setNameCategory] = useState("Animals");
+  const [colorTeam, setColorTeam] = useState<StoredTeam | null>(null);
   useEffect(() => {
     if (!tournament) return;
     setTeamCount(tournament.maxTeams);
@@ -104,7 +121,7 @@ export default function TeamsScreen() {
       { length: generatedTeamCount },
       (_, index) => ({
         id: `team-${index + 1}`,
-        name: `Team ${teamNames[index] || index + 1}`,
+        name: `Team ${(nameCategories[nameCategory] || teamNames)[index] || index + 1}`,
         color: colors[index % colors.length],
         playerIds: shuffled
           .filter(
@@ -115,7 +132,6 @@ export default function TeamsScreen() {
     ).filter((team) => team.playerIds.length);
     setBusy(true);
     try {
-      await updateTournament(tournament.id, { maxTeams: generated.length });
       await saveTeams(tournament.id, generated);
       setFeedback(`${generated.length} random teams saved and synced.`);
       setShowSetup(false);
@@ -173,6 +189,12 @@ export default function TeamsScreen() {
         },
       ],
     );
+  const editTeam = (team: StoredTeam) => Alert.alert("Edit team", team.name, [{ text: "Cancel", style: "cancel" }, { text: "Rename", onPress: () => Alert.prompt("Team name", "Enter a custom name", async name => { if (!name?.trim()) return; await saveTeams(tournament.id, teams.map(item => item.id === team.id ? { ...item, name: name.trim() } : item)) }, "plain-text", team.name) }, { text: "Choose color", onPress: () => setColorTeam(team) }])
+  const setTeamColor = async (color: string) => {
+    if (!colorTeam) return;
+    try { await saveTeams(tournament.id, teams.map(item => item.id === colorTeam.id ? { ...item, color } : item)); setColorTeam(null); }
+    catch (error) { Alert.alert("Could not save color", error instanceof Error ? error.message : "Please try again."); }
+  };
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
       <ScreenTitle eyebrow={`${teams.length} SAVED TEAMS`} title="Teams">
@@ -183,6 +205,7 @@ export default function TeamsScreen() {
         <View style={s.actions}>
           <View style={s.generationPanel}>
             <Text style={s.generationTitle}>Make random teams by</Text>
+            <Text style={s.generationTitle}>Team-name category</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={s.categoryRow}>{Object.keys(nameCategories).map(category => <Pressable key={category} style={[s.categoryButton, nameCategory === category && s.categoryButtonActive]} onPress={() => setNameCategory(category)}><Text style={[s.categoryText, nameCategory === category && s.categoryTextActive]}>{category}</Text></Pressable>)}</View></ScrollView>
             <View style={s.modeRow}>
               <Pressable
                 style={[
@@ -331,7 +354,7 @@ export default function TeamsScreen() {
       </View>}
       {teams.length ? (
         teams.map((team) => (
-          <View key={team.id} style={s.card}>
+          <Pressable key={team.id} style={s.card} onPress={() => organizer && editTeam(team)}>
             <TeamMark
               label={team.name
                 .split(" ")
@@ -350,7 +373,7 @@ export default function TeamsScreen() {
                 </Text>
               ))}
             </View>
-          </View>
+          </Pressable>
         ))
       ) : (
         <View style={s.emptyInline}>
@@ -362,6 +385,9 @@ export default function TeamsScreen() {
           </Text>
         </View>
       )}
+      <Modal visible={Boolean(colorTeam)} transparent animationType="fade" onRequestClose={() => setColorTeam(null)}>
+        <View style={s.colorOverlay}><View style={s.colorModal}><Text style={s.colorModalTitle}>Choose a team color</Text><Text style={s.colorModalCopy}>{colorTeam?.name}</Text><View style={s.colorWheel}>{colorWheelOptions.map((option, index) => { const angle = (index / colorWheelOptions.length) * Math.PI * 2 - Math.PI / 2; return <Pressable key={option.value} accessibilityLabel={option.name} style={[s.wheelColor, { backgroundColor: option.value, left: 88 + Math.cos(angle) * 78, top: 88 + Math.sin(angle) * 78 }, colorTeam?.color === option.value && s.wheelColorSelected]} onPress={() => void setTeamColor(option.value)} /> })}<View style={[s.wheelCenter, { backgroundColor: colorTeam?.color || palette.purple }]}><Text style={s.wheelCenterText}>Tap a color</Text></View></View><Text style={s.colorHint}>Or choose a favorite</Text><View style={s.colorGrid}>{teamColorOptions.map(option => <Pressable key={option.value} accessibilityLabel={option.name} style={[s.colorOption, { backgroundColor: option.value }, colorTeam?.color === option.value && s.colorOptionSelected]} onPress={() => void setTeamColor(option.value)}><Text style={s.colorOptionText}>{option.name}</Text></Pressable>)}</View><Pressable onPress={() => setColorTeam(null)}><Text style={s.colorCancel}>Cancel</Text></Pressable></View></View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -466,6 +492,21 @@ const s: any = StyleSheet.create({
   },
   name: { color: "#374151", fontSize: 14, fontWeight: "700", marginBottom: 6 },
   player: { color: palette.muted, fontSize: 11, lineHeight: 19 },
+  colorOverlay: { flex: 1, backgroundColor: "rgba(20, 30, 50, .45)", justifyContent: "center", padding: 24 },
+  colorModal: { backgroundColor: "#FFF", borderRadius: 18, padding: 22 },
+  colorModalTitle: { color: palette.ink, fontSize: 19, fontWeight: "800", textAlign: "center" },
+  colorModalCopy: { color: palette.muted, fontSize: 13, textAlign: "center", marginTop: 5, marginBottom: 18 },
+  colorWheel: { width: 212, height: 212, alignSelf: "center", position: "relative", marginBottom: 12 },
+  wheelColor: { position: "absolute", width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: "#FFF" },
+  wheelColorSelected: { borderColor: palette.ink, borderWidth: 4 },
+  wheelCenter: { position: "absolute", width: 92, height: 92, left: 60, top: 60, borderRadius: 46, alignItems: "center", justifyContent: "center", borderWidth: 4, borderColor: "#FFF" },
+  wheelCenterText: { color: palette.ink, fontSize: 11, fontWeight: "800" },
+  colorHint: { color: palette.muted, fontSize: 11, fontWeight: "700", marginBottom: 8 },
+  colorGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 22 },
+  colorOption: { width: "47%", minHeight: 52, borderRadius: 10, alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: "transparent" },
+  colorOptionSelected: { borderColor: palette.ink },
+  colorOptionText: { color: palette.ink, fontSize: 12, fontWeight: "800" },
+  colorCancel: { color: palette.purple, textAlign: "center", fontSize: 14, fontWeight: "800" },
 });
 
 Object.assign(
