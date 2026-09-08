@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "86097795467",
+    "project_id": "brackify-25fe2",
+    "storage_bucket": "brackify-25fe2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:86097795467:android:bcc23f8d1dcbaf051fb78e",
+        "android_client_info": {
+          "package_name": "com.brackify.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "86097795467-gntf8u146rqdlcs27l4gp82kmhl188kl.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBM1evKPkogqtgkAY-MHbz9Job812kHfQM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "86097795467-gntf8u146rqdlcs27l4gp82kmhl188kl.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "86097795467-90u2mubc25edhll2vepj4darle6gfbm6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.brackify.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

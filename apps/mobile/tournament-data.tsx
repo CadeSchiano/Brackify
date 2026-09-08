@@ -21,7 +21,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   const [players, setPlayers] = useState<TournamentPlayer[]>([])
   const [matches, setMatches] = useState<TournamentMatch[]>([])
   const [loading, setLoading] = useState(true)
-  const tournament = tournaments.find(item => item.id === selectedTournamentId) || tournaments[0] || null
+  // Never fall back to another tournament while a specific selection is loading.
+  // That prevents a previous tournament's roster, teams, or matches appearing in a new one.
+  const tournament = selectedTournamentId ? tournaments.find(item => item.id === selectedTournamentId) || null : tournaments[0] || null
 
   useEffect(() => {
     const user = auth.currentUser
@@ -34,6 +36,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!tournament) { setTeams([]); setPlayers([]); setMatches([]); return }
+    // Clear the old workspace immediately while Firestore subscribes to this tournament.
+    setTeams([]); setPlayers([]); setMatches([])
     const unsubscribeTeams = subscribeToTeams(tournament.id, setTeams)
     const unsubscribePlayers = subscribeToPlayers(tournament.id, setPlayers)
     const unsubscribeMatches = subscribeToMatches(tournament.id, setMatches)

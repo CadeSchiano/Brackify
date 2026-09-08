@@ -9,7 +9,7 @@ import { ensureUserProfile } from '@brackify/firebase'
 export default function RootLayout() {
   const [ready, setReady] = useState(false)
   const [signedIn, setSignedIn] = useState(false)
-  useEffect(() => onAuthStateChanged(auth, user => { if (user) void ensureUserProfile(user); setSignedIn(Boolean(user)); setReady(true) }), [])
+  useEffect(() => onAuthStateChanged(auth, user => { if (user) void ensureUserProfile(user).catch(error => console.warn('Could not create the user profile.', error)); setSignedIn(Boolean(user)); setReady(true) }), [])
   if (!ready) return <><StatusBar style="dark"/><Stack screenOptions={{ headerShown: false }} /></>
   return <><StatusBar style="dark"/><Stack screenOptions={{ headerShown: false, animation: 'fade' }}><Stack.Screen name="(auth)" /><Stack.Screen name="(tabs)" /></Stack><Redirect href={signedIn ? '/(tabs)' : '/'} /></>
 }

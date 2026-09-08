@@ -1,5 +1,5 @@
 import { getApp, getApps, initializeApp } from 'firebase/app'
-import { addDoc, collection, doc, getDoc, getFirestore, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { addDoc, collection, doc, getDoc, getDocs, getFirestore, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
 
 export const firebaseConfig = {
@@ -128,8 +128,35 @@ export async function seedTournamentPlayers(tournamentId: string, names: string[
 }
 
 export async function addTournamentPlayer(tournamentId: string, name: string) {
-  const ref = await addDoc(playersRef(tournamentId), { name: name.trim(), checkedIn: false, createdAt: serverTimestamp() })
-  return { id: ref.id, name: name.trim(), checkedIn: false } as TournamentPlayer
+  const trimmedName = name.trim()
+  if (!trimmedName) throw new Error('Enter a player name.')
+  const tournamentRef = doc(db, 'tournaments', tournamentId)
+  const [tournamentSnapshot, rosterSnapshot] = await Promise.all([getDoc(tournamentRef), getDocs(playersRef(tournamentId))])
+  if (!tournamentSnapshot.exists()) throw new Error('Tournament not found.')
+  if (rosterSnapshot.docs.some(player => String(player.data().name).trim().toLocaleLowerCase() === trimmedName.toLocaleLowerCase())) throw new Error('That player is already on the roster.')
+  const ref = doc(playersRef(tournamentId))
+  const playerNames = Array.isArray(tournamentSnapshot.data().playerNames) ? tournamentSnapshot.data().playerNames : []
+  const batch = writeBatch(db)
+  batch.set(ref, { name: trimmedName, checkedIn: false, createdAt: serverTimestamp() })
+  batch.update(tournamentRef, { playerNames: [...playerNames, trimmedName], updatedAt: serverTimestamp() })
+  await batch.commit()
+  return { id: ref.id, name: trimmedName, checkedIn: false } as TournamentPlayer
+}
+
+export async function removeTournamentPlayer(tournamentId: string, playerId: string) {
+  const tournamentRef = doc(db, 'tournaments', tournamentId)
+  const [tournamentSnapshot, playerSnapshot, teamsSnapshot] = await Promise.all([getDoc(tournamentRef), getDoc(doc(playersRef(tournamentId), playerId)), getDocs(teamsRef(tournamentId))])
+  if (!tournamentSnapshot.exists() || !playerSnapshot.exists()) return
+  const removedName = String(playerSnapshot.data().name)
+  const playerNames = Array.isArray(tournamentSnapshot.data().playerNames) ? tournamentSnapshot.data().playerNames : []
+  const batch = writeBatch(db)
+  batch.delete(playerSnapshot.ref)
+  teamsSnapshot.docs.forEach(team => {
+    const playerIds = (team.data().playerIds || []).filter((id: string) => id !== playerId)
+    batch.update(team.ref, { playerIds, updatedAt: serverTimestamp() })
+  })
+  batch.update(tournamentRef, { playerNames: playerNames.filter((name: string) => name !== removedName), updatedAt: serverTimestamp() })
+  await batch.commit()
 }
 
 export function subscribeToPlayers(tournamentId: string, onChange: (players: TournamentPlayer[]) => void) {
@@ -164,23 +191,33 @@ export type TournamentMatch = {
 const matchesRef = (tournamentId: string) => collection(db, 'tournaments', tournamentId, 'matches')
 
 export async function generateSingleEliminationBracket(tournamentId: string, teams: StoredTeam[]) {
-  if (teams.length < 2 || (teams.length & (teams.length - 1)) !== 0) throw new Error('Single elimination requires 2, 4, or 8 teams.')
-  const rounds = Math.log2(teams.length)
+  if (teams.length < 2) throw new Error('Single elimination requires at least two teams.')
+  const bracketSize = 2 ** Math.ceil(Math.log2(teams.length))
+  const rounds = Math.log2(bracketSize)
+  const slots = [...teams, ...Array(bracketSize - teams.length).fill(null)]
   const batch = writeBatch(db)
+  const byeAdvances = new Map<string, Partial<TournamentMatch>>()
   for (let round = 1; round <= rounds; round += 1) {
-    const matchCount = teams.length / 2 ** round
+    const matchCount = bracketSize / 2 ** round
     for (let position = 1; position <= matchCount; position += 1) {
       const id = `r${round}-m${position}`
       const nextMatchId = round < rounds ? `r${round + 1}-m${Math.ceil(position / 2)}` : null
       const nextSlot = round < rounds ? (position % 2 ? 'teamAId' : 'teamBId') : null
       batch.set(doc(matchesRef(tournamentId), id), {
         round, position,
-        teamAId: round === 1 ? teams[(position - 1) * 2].id : null,
-        teamBId: round === 1 ? teams[(position - 1) * 2 + 1].id : null,
+        teamAId: round === 1 ? slots[(position - 1) * 2]?.id || null : null,
+        teamBId: round === 1 ? slots[(position - 1) * 2 + 1]?.id || null : null,
         scoreA: null, scoreB: null, winnerId: null, nextMatchId, nextSlot,
         loserNextMatchId: null, loserNextSlot: null,
+        ...(byeAdvances.get(id) || {}),
         updatedAt: serverTimestamp(),
       })
+      if (round === 1) {
+        const a = slots[(position - 1) * 2]
+        const b = slots[(position - 1) * 2 + 1]
+        const bye = a && !b ? a : b && !a ? b : null
+        if (bye && nextMatchId && nextSlot) byeAdvances.set(nextMatchId, { [nextSlot]: bye.id })
+      }
     }
   }
   await batch.commit()
