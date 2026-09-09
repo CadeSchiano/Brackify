@@ -92,7 +92,7 @@ export default function BracketScreen() {
         eyebrow={`${tournament.name.toUpperCase()} · LIVE`}
         title="Bracket"
       />
-      {tournament.format === "Double elimination" && <View style={s.notice}><Text style={s.noticeTitle}>Double elimination: 4 teams only</Text><Text style={s.noticeSub}>More team counts are coming. Use single elimination for any number of teams and automatic byes.</Text></View>}
+      {tournament.format === "Double elimination" && <View style={s.notice}><Text style={s.noticeTitle}>Double elimination</Text><Text style={s.noticeSub}>Works with any team count. Byes advance automatically and teams must lose twice to be eliminated.</Text></View>}
       {matches.length ? (
         <>
           <View style={s.notice}>

@@ -19,3 +19,5 @@
 @media(max-width:720px){.content{min-width:0}.heading-actions{flex-wrap:wrap}.mobile-app-button{display:inline-flex}.status-card,.stats,.split,.team-panel,.tournament-list,.player-manager,.live-bracket{margin-left:19px;margin-right:19px}.status-footer{gap:12px}.teams{grid-template-columns:1fr}.team{border-right:0;border-bottom:1px solid #ebedf0}.team:last-child{border-bottom:0}.modal-wrap{padding:12px}.modal{padding:25px 20px}.form-two,.player-list{grid-template-columns:1fr}.toast{left:16px;right:16px;bottom:16px;text-align:center}.tournament-row{padding:14px;gap:10px}.tournament-row>span:last-child{display:none}}
 
 .image-file-name{display:block;margin-top:7px;color:#687487;font-size:10px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.password-field{display:block;position:relative}.auth-card .password-field input{padding-right:43px}.password-toggle{position:absolute;right:1px;bottom:1px;width:40px;height:40px;display:grid;place-items:center;background:transparent;color:#718096;border:0;padding:0}.password-toggle:hover{color:#5263f5}
+.web-qr{display:block;width:180px;height:180px;margin:16px auto 4px;border-radius:8px}

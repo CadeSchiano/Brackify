@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react'
-import { seedTournamentPlayers, subscribeToMatches, subscribeToPlayers, subscribeToTeams, subscribeToTournaments, type StoredTeam, type StoredTournament, type TournamentMatch, type TournamentPlayer } from '@brackify/firebase'
+import { seedTournamentPlayers, subscribeToMatches, subscribeToPlayers, subscribeToTeams, subscribeToTournaments, updateTournament, type StoredTeam, type StoredTournament, type TournamentMatch, type TournamentPlayer } from '@brackify/firebase'
 import { auth } from './firebase/client'
 
 type TournamentData = {
@@ -46,9 +46,11 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
 
   // Repair tournaments created before the roster records were written successfully.
   useEffect(() => {
-    if (!tournament || players.length || !tournament.playerNames?.length || auth.currentUser?.uid !== tournament.organizerId) return
-    void seedTournamentPlayers(tournament.id, tournament.playerNames)
-  }, [tournament?.id, tournament?.organizerId, tournament?.playerNames?.join('|'), players.length])
+    if (!tournament || tournament.rosterInitialized || auth.currentUser?.uid !== tournament.organizerId) return
+    if (players.length) { void updateTournament(tournament.id, { rosterInitialized: true }); return }
+    if (!tournament.playerNames?.length) { void updateTournament(tournament.id, { rosterInitialized: true }); return }
+    void seedTournamentPlayers(tournament.id, tournament.playerNames).then(() => updateTournament(tournament.id, { rosterInitialized: true }))
+  }, [tournament?.id, tournament?.organizerId, tournament?.playerNames?.join('|'), tournament?.rosterInitialized, players.length])
 
   const value = useMemo(() => ({ tournaments, tournament, teams, players, matches, loading, selectTournament: setSelectedTournamentId }), [tournaments, tournament, teams, players, matches, loading])
   return <TournamentContext.Provider value={value}>{children}</TournamentContext.Provider>

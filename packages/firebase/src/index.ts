@@ -1,6 +1,8 @@
+/// <reference path="./duel.d.ts" />
 import { getApp, getApps, initializeApp } from 'firebase/app'
 import { addDoc, arrayUnion, collection, doc, getDoc, getDocs, getFirestore, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
+import Duel from 'duel'
 
 export const firebaseConfig = {
   apiKey: 'AIzaSyD-7wJ6vd8k8N_ggYyc9Vi0ws9ZVK_KfTQ',
@@ -66,6 +68,7 @@ export type StoredTournament = {
   memberIds: string[]
   maxTeams: number
   playerNames: string[]
+  rosterInitialized?: boolean
   inviteCode: string
   imageUrl?: string
   passwordProtected?: boolean
@@ -83,11 +86,13 @@ export async function createTournament(userId: string, input: CreateTournamentIn
     inviteCode: code,
     organizerId: userId,
     memberIds: [userId],
+    rosterInitialized: false,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
   await setDoc(doc(db, 'invites', code), { tournamentId: ref.id, organizerId: userId, createdAt: serverTimestamp() })
   await seedTournamentPlayers(ref.id, input.playerNames)
+  await updateDoc(ref, { rosterInitialized: true, updatedAt: serverTimestamp() })
   return { id: ref.id, ...input, inviteCode: code, organizerId: userId, memberIds: [userId] } as StoredTournament
 }
 
@@ -132,16 +137,18 @@ export async function addTournamentPlayer(tournamentId: string, name: string) {
   const ref = doc(playersRef(tournamentId))
   const batch = writeBatch(db)
   batch.set(ref, { name: trimmedName, checkedIn: false, createdAt: serverTimestamp() })
+  batch.update(tournamentRef, { playerNames: [...rosterSnapshot.docs.map(player => String(player.data().name)), trimmedName], rosterInitialized: true, updatedAt: serverTimestamp() })
   await batch.commit()
   return { id: ref.id, name: trimmedName, checkedIn: false } as TournamentPlayer
 }
 
 export async function removeTournamentPlayer(tournamentId: string, playerId: string) {
   const tournamentRef = doc(db, 'tournaments', tournamentId)
-  const [tournamentSnapshot, playerSnapshot, teamsSnapshot] = await Promise.all([getDoc(tournamentRef), getDoc(doc(playersRef(tournamentId), playerId)), getDocs(teamsRef(tournamentId))])
+  const [tournamentSnapshot, playerSnapshot, teamsSnapshot, rosterSnapshot] = await Promise.all([getDoc(tournamentRef), getDoc(doc(playersRef(tournamentId), playerId)), getDocs(teamsRef(tournamentId)), getDocs(playersRef(tournamentId))])
   if (!tournamentSnapshot.exists() || !playerSnapshot.exists()) return
   const batch = writeBatch(db)
   batch.delete(playerSnapshot.ref)
+  batch.update(tournamentRef, { playerNames: rosterSnapshot.docs.filter(player => player.id !== playerId).map(player => String(player.data().name)), rosterInitialized: true, updatedAt: serverTimestamp() })
   teamsSnapshot.docs.forEach(team => {
     const playerIds = (team.data().playerIds || []).filter((id: string) => id !== playerId)
     batch.update(team.ref, { playerIds, updatedAt: serverTimestamp() })
@@ -183,6 +190,7 @@ export type TournamentMatch = {
   nextSlot: 'teamAId' | 'teamBId' | null
   loserNextMatchId?: string | null
   loserNextSlot?: 'teamAId' | 'teamBId' | null
+  requiresResetOnLowerWinner?: boolean
 }
 
 const matchesRef = (tournamentId: string) => collection(db, 'tournaments', tournamentId, 'matches')
@@ -221,15 +229,34 @@ export async function generateSingleEliminationBracket(tournamentId: string, tea
 }
 
 export async function generateDoubleEliminationBracket(tournamentId: string, teams: StoredTeam[]) {
-  if (teams.length !== 4) throw new Error('Double elimination currently supports 4 teams.')
+  if (teams.length < 2) throw new Error('Double elimination requires at least two teams.')
   const batch = writeBatch(db)
   const write = (id: string, data: Partial<TournamentMatch>) => batch.set(doc(matchesRef(tournamentId), id), { scoreA: null, scoreB: null, winnerId: null, nextMatchId: null, nextSlot: null, loserNextMatchId: null, loserNextSlot: null, updatedAt: serverTimestamp(), ...data })
-  write('w-r1-m1', { round: 1, position: 1, teamAId: teams[0].id, teamBId: teams[1].id, nextMatchId: 'w-r2-m1', nextSlot: 'teamAId', loserNextMatchId: 'l-r1-m1', loserNextSlot: 'teamAId' })
-  write('w-r1-m2', { round: 1, position: 2, teamAId: teams[2].id, teamBId: teams[3].id, nextMatchId: 'w-r2-m1', nextSlot: 'teamBId', loserNextMatchId: 'l-r1-m1', loserNextSlot: 'teamBId' })
-  write('l-r1-m1', { round: 2, position: 1, teamAId: null, teamBId: null, nextMatchId: 'l-r2-m1', nextSlot: 'teamAId' })
-  write('w-r2-m1', { round: 2, position: 2, teamAId: null, teamBId: null, nextMatchId: 'g-m1', nextSlot: 'teamAId', loserNextMatchId: 'l-r2-m1', loserNextSlot: 'teamBId' })
-  write('l-r2-m1', { round: 3, position: 1, teamAId: null, teamBId: null, nextMatchId: 'g-m1', nextSlot: 'teamBId' })
-  write('g-m1', { round: 4, position: 1, teamAId: null, teamBId: null })
+  if (teams.length === 2) {
+    write('w-r1-m1', { round: 1, position: 1, teamAId: teams[0].id, teamBId: teams[1].id, nextMatchId: 'g-m1', nextSlot: 'teamAId', loserNextMatchId: 'g-m1', loserNextSlot: 'teamBId' })
+    write('g-m1', { round: 2, position: 1, teamAId: null, teamBId: null })
+    await batch.commit()
+    return
+  }
+  const duel = new Duel(teams.length, { last: Duel.LB })
+  const winnersRounds = Math.ceil(Math.log2(teams.length))
+  const matchId = (id: { s: number; r: number; m: number }) => `${id.s === Duel.WB ? 'w' : 'l'}-r${id.r}-m${id.m}`
+  const slot = (index: number | undefined) => index === 0 ? 'teamAId' : index === 1 ? 'teamBId' : null
+  for (const match of duel.matches as Array<{ id: { s: number; r: number; m: number }; p: number[] }>) {
+    const right = duel.right(match.id) as [{ s: number; r: number; m: number }, number] | null
+    const down = duel.down(match.id) as [{ s: number; r: number; m: number }, number] | null
+    write(matchId(match.id), {
+      round: match.id.s === Duel.WB ? match.id.r : winnersRounds + match.id.r,
+      position: match.id.m,
+      teamAId: match.p[0] > 0 ? teams[match.p[0] - 1]?.id || null : null,
+      teamBId: match.p[1] > 0 ? teams[match.p[1] - 1]?.id || null : null,
+      nextMatchId: right ? matchId(right[0]) : null,
+      nextSlot: right ? slot(right[1]) : null,
+      loserNextMatchId: down ? matchId(down[0]) : null,
+      loserNextSlot: down ? slot(down[1]) : null,
+      requiresResetOnLowerWinner: Boolean(right && down && matchId(right[0]) === matchId(down[0])),
+    })
+  }
   await batch.commit()
 }
 
@@ -267,8 +294,16 @@ export async function recordMatchResult(tournamentId: string, matchId: string, s
     if (!match.teamAId || !match.teamBId) throw new Error('Both teams must be set before scoring.')
     const winnerId = scoreA > scoreB ? match.teamAId : match.teamBId
     transaction.update(matchRef, { scoreA, scoreB, winnerId, updatedAt: serverTimestamp() })
-    if (match.nextMatchId && match.nextSlot) transaction.update(doc(matchesRef(tournamentId), match.nextMatchId), { [match.nextSlot]: winnerId, updatedAt: serverTimestamp() })
     const loserId = winnerId === match.teamAId ? match.teamBId : match.teamAId
-    if (match.loserNextMatchId && match.loserNextSlot) transaction.update(doc(matchesRef(tournamentId), match.loserNextMatchId), { [match.loserNextSlot]: loserId, updatedAt: serverTimestamp() })
+    if (match.requiresResetOnLowerWinner && match.nextMatchId && match.nextSlot && match.loserNextMatchId && match.loserNextSlot) {
+      // The upper-bracket finalist is in team A. A reset is only needed if the
+      // lower-bracket finalist wins this first championship match.
+      if (winnerId !== match.teamAId) {
+        transaction.update(doc(matchesRef(tournamentId), match.nextMatchId), { [match.nextSlot]: winnerId, [match.loserNextSlot]: loserId, updatedAt: serverTimestamp() })
+      }
+    } else {
+      if (match.nextMatchId && match.nextSlot) transaction.update(doc(matchesRef(tournamentId), match.nextMatchId), { [match.nextSlot]: winnerId, updatedAt: serverTimestamp() })
+      if (match.loserNextMatchId && match.loserNextSlot) transaction.update(doc(matchesRef(tournamentId), match.loserNextMatchId), { [match.loserNextSlot]: loserId, updatedAt: serverTimestamp() })
+    }
   })
 }
