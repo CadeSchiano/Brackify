@@ -1,1 +1,1 @@
-<!-- Deployment trigger -->
+<!-- Vercel deployment trigger: corrected GitHub commit identity -->
