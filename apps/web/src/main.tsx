@@ -74,7 +74,10 @@ function App() {
       window.location.hash = ''
     } catch (error) {
       const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
-      notify(code.includes('requires-recent-login') ? 'For security, sign out, sign back in, then try deleting your account again.' : 'Could not delete your account. Please try again.')
+      if (code.includes('requires-recent-login')) {
+        await signOut(auth)
+        window.location.hash = 'signin'
+      } else notify('Could not delete your account. Please try again.')
     }
   }
 
