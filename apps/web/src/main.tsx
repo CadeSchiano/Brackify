@@ -39,6 +39,7 @@ function Avatar({ initials, color = '#5063ff' }: { initials: string; color?: str
 }
 
 function App() {
+  const [publicRoute, setPublicRoute] = useState(() => window.location.hash)
   const [navOpen, setNavOpen] = useState(false)
   const [active, setActive] = useState('Overview')
   const [tournament, setTournament] = useState<Tournament>(emptyTournament)
@@ -65,6 +66,11 @@ function App() {
   const selectedTournament = savedTournaments.find(item => item.id === selectedTournamentId)
   const canManageRoster = Boolean(user && selectedTournament?.organizerId === user.uid)
 
+  useEffect(() => {
+    const syncRoute = () => setPublicRoute(window.location.hash)
+    window.addEventListener('hashchange', syncRoute)
+    return () => window.removeEventListener('hashchange', syncRoute)
+  }, [])
   useEffect(() => onAuthStateChanged(auth, currentUser => { setUser(currentUser); setAuthLoading(false) }), [])
   useEffect(() => {
     if (!user) { setProfile(null); return }
@@ -132,7 +138,8 @@ function App() {
   ] as const
 
   if (authLoading) return <div className="auth-shell"><div className="auth-loading"><span className="brand-mark"><span /></span><b>Loading Brackify…</b></div></div>
-  if (!user) return <AuthScreen />
+  if (!user && publicRoute !== '#signin' && publicRoute !== '#signup') return <PublicLanding />
+  if (!user) return <AuthScreen initialMode={publicRoute === '#signup' ? 'signup' : 'signin'} />
   if (profileLoading) return <div className="auth-shell"><div className="auth-loading"><span className="brand-mark"><span /></span><b>Preparing your profile…</b></div></div>
   if (profileError) return <div className="auth-shell"><div className="auth-card"><div className="auth-brand"><span className="brand-mark"><span /></span><b>brackify</b></div><p className="auth-error">{profileError}</p><button className="button primary auth-submit" onClick={() => window.location.reload()}>Try again</button></div></div>
   if (profile && !profile.onboardingComplete) return <ProfileOnboarding user={user} profile={profile} onSaved={setProfile}/>
@@ -180,8 +187,12 @@ function TeamAssignments({ teams, roster, onGenerate, canManage, onEdit }: { tea
   return <section className="panel team-panel team-assignments"><div className="panel-head"><div><h2>Team assignments</h2><p>Every player is listed under their assigned team.</p></div>{canManage && <button className="button ghost" onClick={onGenerate}><Sparkles size={16}/>Randomize again</button>}</div><div className="teams">{teams.map(team => <article className="team" key={team.id}><div className="team-logo" style={{ background: team.color }}>{team.initials}</div><div className="team-details"><h3>{team.name}</h3><p>{team.members} players</p><ul>{team.playerIds.map(playerId => <li key={playerId}>{roster.find(player => player.id === playerId)?.name || 'Unknown player'}</li>)}</ul>{canManage && <div className="team-customize"><button className="text-button" onClick={() => { const name = window.prompt('Team name', team.name); if (name?.trim() && name.trim() !== team.name) void onEdit(team.id, { name: name.trim() }) }}>Rename</button><label className="team-color-picker">Color <input aria-label={`${team.name} color`} type="color" value={team.color} onChange={event => void onEdit(team.id, { color: event.target.value })}/></label></div>}</div></article>)}</div></section>
 }
 
-function AuthScreen() {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+function PublicLanding() {
+  return <main className="public-site"><header className="public-header"><a className="public-brand" href="#top"><span className="brand-mark"><span /></span>brackify</a><nav><a href="#how-it-works">How it works</a><a href="#about">About</a><a href="/privacy.html">Privacy</a><a href="#signin" className="button ghost">Sign in</a><a href="#signup" className="button primary">Get started</a></nav></header><section id="top" className="hero"><div><p className="public-eyebrow"><span className="live-dot"/>TOURNAMENTS, MADE SIMPLE</p><h1>Set the teams.<br/><em>Run the tournament.</em></h1><p className="hero-copy">Brackify helps organizers turn a player list into fair teams, live brackets, and a tournament everyone can follow.</p><div className="hero-actions"><a className="button primary" href="#signup">Create a free tournament <span>→</span></a><a className="button ghost" href="#how-it-works">See how it works</a></div><p className="hero-note">Free to start · Works on web and mobile</p></div><div className="hero-card"><div className="hero-card-top"><span>FRIDAY NIGHT CUP</span><b>LIVE</b></div><h2>Playoffs</h2><div className="hero-match"><span><i/>Blue Sharks <b>3</b></span><span><i/>Storm Ravens <b>1</b></span></div><div className="hero-match muted"><span><i/>Thunder <b>—</b></span><span><i/>Neon Ninjas <b>—</b></span></div><p>Scores update instantly for every player.</p></div></section><section id="how-it-works" className="public-section"><p className="public-eyebrow">HOW IT WORKS</p><h2>From roster to results in minutes.</h2><div className="public-steps"><article><b>01</b><h3>Create your event</h3><p>Choose your sport, format, date, location, and visibility.</p></article><article><b>02</b><h3>Build fair teams</h3><p>Add players and generate balanced random teams in one tap.</p></article><article><b>03</b><h3>Run it live</h3><p>Generate brackets, enter scores, and share updates instantly.</p></article></div></section><section id="about" className="public-section about-section"><p className="public-eyebrow">ABOUT BRACKIFY</p><h2>Built for the people who make game day happen.</h2><p>Whether it’s a backyard competition, school event, league playoff, or office tournament, Brackify gives organizers one clean place to manage teams, brackets, invites, and live results.</p><a href="#signup" className="text-button">Start your tournament →</a></section><footer className="public-footer"><span>© {new Date().getFullYear()} Brackify</span><div><a href="/privacy.html">Privacy Policy</a><a href="/terms.html">Terms of Service</a><a href="#signin">Sign in</a></div></footer></main>
+}
+
+function AuthScreen({ initialMode }: { initialMode: 'signin' | 'signup' }) {
+  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -202,7 +213,7 @@ function AuthScreen() {
     try { await signInWithPopup(auth, new GoogleAuthProvider()) }
     catch (caught) { setError(friendlyAuthError(caught)) } finally { setPending(false) }
   }
-  return <div className="auth-shell"><section className="auth-card"><div className="auth-brand"><span className="brand-mark"><span /></span><b>brackify</b></div><div className="auth-copy"><h1>{mode === 'signin' ? 'Welcome back.' : 'Create your account.'}</h1><p>{mode === 'signin' ? 'Sign in to manage your tournaments.' : 'Start your next tournament in minutes.'}</p></div><button className="google-button" disabled={pending} onClick={google}><span>G</span>Continue with Google</button><div className="auth-divider"><i/>or continue with email<i/></div><form onSubmit={submit}>{mode === 'signup' && <label>Name<input required value={name} onChange={e => setName(e.target.value)} placeholder="Chris James" autoComplete="name"/></label>}<label>Email<input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email"/></label><label>Password<span className="password-field"><input required type={passwordVisible ? 'text' : 'password'} minLength={6} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}/><button type="button" className="password-toggle" aria-label={passwordVisible ? 'Hide password' : 'Show password'} onClick={() => setPasswordVisible(visible => !visible)}>{passwordVisible ? <EyeOff size={18}/> : <Eye size={18}/>}</button></span></label>{error && <p className="auth-error">{error}</p>}<button disabled={pending} className="button primary auth-submit" type="submit">{pending ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}</button></form><p className="auth-switch">{mode === 'signin' ? 'New to Brackify?' : 'Already have an account?'} <button onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError('') }}>{mode === 'signin' ? 'Create an account' : 'Sign in'}</button></p></section></div>
+  return <div className="auth-shell"><section className="auth-card"><a className="auth-back" href="#top">← Back to Brackify</a><div className="auth-brand"><span className="brand-mark"><span /></span><b>brackify</b></div><div className="auth-copy"><h1>{mode === 'signin' ? 'Welcome back.' : 'Create your account.'}</h1><p>{mode === 'signin' ? 'Sign in to manage your tournaments.' : 'Start your next tournament in minutes.'}</p></div><button className="google-button" disabled={pending} onClick={google}><span>G</span>Continue with Google</button><div className="auth-divider"><i/>or continue with email<i/></div><form onSubmit={submit}>{mode === 'signup' && <label>Name<input required value={name} onChange={e => setName(e.target.value)} placeholder="Chris James" autoComplete="name"/></label>}<label>Email<input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email"/></label><label>Password<span className="password-field"><input required type={passwordVisible ? 'text' : 'password'} minLength={6} value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}/><button type="button" className="password-toggle" aria-label={passwordVisible ? 'Hide password' : 'Show password'} onClick={() => setPasswordVisible(visible => !visible)}>{passwordVisible ? <EyeOff size={18}/> : <Eye size={18}/>}</button></span></label>{error && <p className="auth-error">{error}</p>}<button disabled={pending} className="button primary auth-submit" type="submit">{pending ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}</button></form><p className="auth-switch">{mode === 'signin' ? 'New to Brackify?' : 'Already have an account?'} <button onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); window.location.hash = mode === 'signin' ? 'signup' : 'signin'; setError('') }}>{mode === 'signin' ? 'Create an account' : 'Sign in'}</button></p></section></div>
 }
 
 function friendlyAuthError(error: unknown) {
