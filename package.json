@@ -13,6 +13,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "optionalDependencies": {
-    "@rolldown/binding-linux-x64-gnu": "^1.2.2"
+    "@rolldown/binding-linux-x64-gnu": "^1.2.2",
+    "lightningcss-linux-x64-gnu": "^1.33.0"
   }
 }
