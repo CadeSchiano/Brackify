@@ -1,6 +1,6 @@
 /// <reference path="./duel.d.ts" />
 import { getApp, getApps, initializeApp } from 'firebase/app'
-import { addDoc, arrayUnion, collection, doc, getDoc, getDocs, getFirestore, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { addDoc, arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, getFirestore, onSnapshot, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import type { User } from 'firebase/auth'
 import Duel from 'duel'
 
@@ -53,6 +53,36 @@ export async function saveUserProfile(userId: string, profile: Omit<UserProfile,
 
 export function subscribeToUserProfile(userId: string, onChange: (profile: UserProfile | null) => void) {
   return onSnapshot(doc(db, 'users', userId), snapshot => onChange(snapshot.exists() ? snapshot.data() as UserProfile : null))
+}
+
+/** Removes the signed-in user's Firestore profile and tournament data before their Auth account is deleted. */
+export async function deleteAccountData(userId: string) {
+  const memberships = await getDocs(query(collection(db, 'tournaments'), where('memberIds', 'array-contains', userId)))
+
+  for (const tournamentSnapshot of memberships.docs) {
+    const tournament = { id: tournamentSnapshot.id, ...tournamentSnapshot.data() } as StoredTournament
+    if (tournament.organizerId !== userId) {
+      await updateDoc(tournamentSnapshot.ref, { memberIds: arrayRemove(userId), updatedAt: serverTimestamp() })
+      continue
+    }
+
+    const [players, teams, matches] = await Promise.all([
+      getDocs(collection(db, 'tournaments', tournament.id, 'players')),
+      getDocs(collection(db, 'tournaments', tournament.id, 'teams')),
+      getDocs(collection(db, 'tournaments', tournament.id, 'matches')),
+    ])
+    const batch = writeBatch(db)
+    players.docs.forEach(item => batch.delete(item.ref))
+    teams.docs.forEach(item => batch.delete(item.ref))
+    matches.docs.forEach(item => batch.delete(item.ref))
+    batch.delete(tournamentSnapshot.ref)
+    batch.delete(doc(db, 'invites', tournament.inviteCode))
+    await batch.commit()
+  }
+
+  const cleanup = writeBatch(db)
+  cleanup.delete(doc(db, 'users', userId))
+  await cleanup.commit()
 }
 
 export type StoredTournament = {
