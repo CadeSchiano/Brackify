@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -70,7 +71,7 @@ function shuffle<T>(items: T[]) {
 }
 
 export default function TeamsScreen() {
-  const { tournament, teams, players, loading } = useTournamentData();
+  const { tournament, teams, players, loading, replaceTeams } = useTournamentData();
   const [newPlayer, setNewPlayer] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -133,6 +134,9 @@ export default function TeamsScreen() {
     setBusy(true);
     try {
       await saveTeams(tournament.id, generated);
+      // The Firestore listener will confirm this shortly, but showing the saved
+      // result immediately prevents a successful generation from looking empty.
+      replaceTeams(generated);
       setFeedback(`${generated.length} random teams saved and synced.`);
       setShowSetup(false);
     } catch (error) {
@@ -189,14 +193,15 @@ export default function TeamsScreen() {
         },
       ],
     );
-  const editTeam = (team: StoredTeam) => Alert.alert("Edit team", team.name, [{ text: "Cancel", style: "cancel" }, { text: "Rename", onPress: () => Alert.prompt("Team name", "Enter a custom name", async name => { if (!name?.trim()) return; await saveTeams(tournament.id, teams.map(item => item.id === team.id ? { ...item, name: name.trim() } : item)) }, "plain-text", team.name) }, { text: "Choose color", onPress: () => setColorTeam(team) }])
+  const editTeam = (team: StoredTeam) => Alert.alert("Edit team", team.name, [{ text: "Cancel", style: "cancel" }, { text: "Rename", onPress: () => Alert.prompt("Team name", "Enter a custom name", async name => { if (!name?.trim()) return; const updated = teams.map(item => item.id === team.id ? { ...item, name: name.trim() } : item); await saveTeams(tournament.id, updated); replaceTeams(updated) }, "plain-text", team.name) }, { text: "Choose color", onPress: () => setColorTeam(team) }])
   const setTeamColor = async (color: string) => {
     if (!colorTeam) return;
-    try { await saveTeams(tournament.id, teams.map(item => item.id === colorTeam.id ? { ...item, color } : item)); setColorTeam(null); }
+    try { const updated = teams.map(item => item.id === colorTeam.id ? { ...item, color } : item); await saveTeams(tournament.id, updated); replaceTeams(updated); setColorTeam(null); }
     catch (error) { Alert.alert("Could not save color", error instanceof Error ? error.message : "Please try again."); }
   };
   return (
-    <ScrollView style={s.screen} contentContainerStyle={s.content}>
+    <KeyboardAvoidingView style={s.screen} behavior="padding">
+    <ScrollView style={s.screen} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
       <ScreenTitle eyebrow={`${teams.length} SAVED TEAMS`} title="Teams">
         <Text style={s.subtitle}>{tournament.name}</Text>
       </ScreenTitle>
@@ -289,7 +294,7 @@ export default function TeamsScreen() {
               {teams.length ? "Randomize teams again" : "Generate random teams"}
             </Text>
           </Pressable>
-          {teams.length > 0 && <Pressable style={{ alignItems: "center", padding: 8 }} onPress={() => Alert.alert("Delete teams?", "This removes team assignments but keeps your player roster.", [{ text: "Cancel", style: "cancel" }, { text: "Delete", style: "destructive", onPress: () => deleteTournamentTeams(tournament.id).catch(error => Alert.alert("Could not delete teams", error instanceof Error ? error.message : "Please try again.")) }])}><Text style={{ color: "#C44955", fontSize: 12, fontWeight: "700" }}>Delete teams</Text></Pressable>}
+          {teams.length > 0 && <Pressable style={{ alignItems: "center", padding: 8 }} onPress={() => Alert.alert("Delete teams?", "This removes team assignments but keeps your player roster.", [{ text: "Cancel", style: "cancel" }, { text: "Delete", style: "destructive", onPress: () => deleteTournamentTeams(tournament.id).then(() => replaceTeams([])).catch(error => Alert.alert("Could not delete teams", error instanceof Error ? error.message : "Please try again.")) }])}><Text style={{ color: "#C44955", fontSize: 12, fontWeight: "700" }}>Delete teams</Text></Pressable>}
           <View style={s.addRow}>
             <TextInput
               style={s.input}
@@ -304,6 +309,7 @@ export default function TeamsScreen() {
               <Text style={s.addText}>Add</Text>
             </Pressable>
           </View>
+          <Text style={s.rosterCounter}>{players.length} {players.length === 1 ? "name" : "names"} in this tournament</Text>
           {feedback ? <Text style={s.feedback}>{feedback}</Text> : null}
         </View>
       )}
@@ -389,6 +395,7 @@ export default function TeamsScreen() {
         <View style={s.colorOverlay}><View style={s.colorModal}><Text style={s.colorModalTitle}>Choose a team color</Text><Text style={s.colorModalCopy}>{colorTeam?.name}</Text><View style={s.colorWheel}>{colorWheelOptions.map((option, index) => { const angle = (index / colorWheelOptions.length) * Math.PI * 2 - Math.PI / 2; return <Pressable key={option.value} accessibilityLabel={option.name} style={[s.wheelColor, { backgroundColor: option.value, left: 88 + Math.cos(angle) * 78, top: 88 + Math.sin(angle) * 78 }, colorTeam?.color === option.value && s.wheelColorSelected]} onPress={() => void setTeamColor(option.value)} /> })}<View style={[s.wheelCenter, { backgroundColor: colorTeam?.color || palette.purple }]}><Text style={s.wheelCenterText}>Tap a color</Text></View></View><Text style={s.colorHint}>Or choose a favorite</Text><View style={s.colorGrid}>{teamColorOptions.map(option => <Pressable key={option.value} accessibilityLabel={option.name} style={[s.colorOption, { backgroundColor: option.value }, colorTeam?.color === option.value && s.colorOptionSelected]} onPress={() => void setTeamColor(option.value)}><Text style={s.colorOptionText}>{option.name}</Text></Pressable>)}</View><Pressable onPress={() => setColorTeam(null)}><Text style={s.colorCancel}>Cancel</Text></Pressable></View></View>
       </Modal>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 const s: any = StyleSheet.create({
@@ -436,6 +443,7 @@ const s: any = StyleSheet.create({
   },
   addText: { color: palette.purple, fontWeight: "700", fontSize: 12 },
   feedback: { color: "#168362", fontSize: 11, fontWeight: "600", marginTop: 2 },
+  rosterCounter: { color: palette.muted, fontSize: 11, fontWeight: "600", textAlign: "right" },
   roster: {
     marginHorizontal: 20,
     marginBottom: 12,
