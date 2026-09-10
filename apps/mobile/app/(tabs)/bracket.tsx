@@ -123,13 +123,23 @@ export default function BracketScreen() {
                       }}
                     >
                       <Row
-                        team={team(match.teamAId)}
+                        team={
+                          team(match.teamAId) ||
+                          (match.teamAName
+                            ? { name: match.teamAName, color: match.teamAColor || "#E4E7EC" }
+                            : undefined)
+                        }
                         score={match.scoreA}
                         winner={match.winnerId === match.teamAId}
                       />
                       <View style={s.line} />
                       <Row
-                        team={team(match.teamBId)}
+                        team={
+                          team(match.teamBId) ||
+                          (match.teamBName
+                            ? { name: match.teamBName, color: match.teamBColor || "#E4E7EC" }
+                            : undefined)
+                        }
                         score={match.scoreB}
                         winner={match.winnerId === match.teamBId}
                       />

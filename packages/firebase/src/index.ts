@@ -213,6 +213,10 @@ export type TournamentMatch = {
   position: number
   teamAId: string | null
   teamBId: string | null
+  teamAName?: string | null
+  teamBName?: string | null
+  teamAColor?: string | null
+  teamBColor?: string | null
   scoreA: number | null
   scoreB: number | null
   winnerId: string | null
@@ -242,6 +246,10 @@ export async function generateSingleEliminationBracket(tournamentId: string, tea
         round, position,
         teamAId: round === 1 ? slots[(position - 1) * 2]?.id || null : null,
         teamBId: round === 1 ? slots[(position - 1) * 2 + 1]?.id || null : null,
+        teamAName: round === 1 ? slots[(position - 1) * 2]?.name || null : null,
+        teamBName: round === 1 ? slots[(position - 1) * 2 + 1]?.name || null : null,
+        teamAColor: round === 1 ? slots[(position - 1) * 2]?.color || null : null,
+        teamBColor: round === 1 ? slots[(position - 1) * 2 + 1]?.color || null : null,
         scoreA: null, scoreB: null, winnerId: null, nextMatchId, nextSlot,
         loserNextMatchId: null, loserNextSlot: null,
         ...(byeAdvances.get(id) || {}),
@@ -263,7 +271,7 @@ export async function generateDoubleEliminationBracket(tournamentId: string, tea
   const batch = writeBatch(db)
   const write = (id: string, data: Partial<TournamentMatch>) => batch.set(doc(matchesRef(tournamentId), id), { scoreA: null, scoreB: null, winnerId: null, nextMatchId: null, nextSlot: null, loserNextMatchId: null, loserNextSlot: null, updatedAt: serverTimestamp(), ...data })
   if (teams.length === 2) {
-    write('w-r1-m1', { round: 1, position: 1, teamAId: teams[0].id, teamBId: teams[1].id, nextMatchId: 'g-m1', nextSlot: 'teamAId', loserNextMatchId: 'g-m1', loserNextSlot: 'teamBId' })
+    write('w-r1-m1', { round: 1, position: 1, teamAId: teams[0].id, teamBId: teams[1].id, teamAName: teams[0].name, teamBName: teams[1].name, teamAColor: teams[0].color, teamBColor: teams[1].color, nextMatchId: 'g-m1', nextSlot: 'teamAId', loserNextMatchId: 'g-m1', loserNextSlot: 'teamBId' })
     write('g-m1', { round: 2, position: 1, teamAId: null, teamBId: null })
     await batch.commit()
     return
@@ -280,6 +288,10 @@ export async function generateDoubleEliminationBracket(tournamentId: string, tea
       position: match.id.m,
       teamAId: match.p[0] > 0 ? teams[match.p[0] - 1]?.id || null : null,
       teamBId: match.p[1] > 0 ? teams[match.p[1] - 1]?.id || null : null,
+      teamAName: match.p[0] > 0 ? teams[match.p[0] - 1]?.name || null : null,
+      teamBName: match.p[1] > 0 ? teams[match.p[1] - 1]?.name || null : null,
+      teamAColor: match.p[0] > 0 ? teams[match.p[0] - 1]?.color || null : null,
+      teamBColor: match.p[1] > 0 ? teams[match.p[1] - 1]?.color || null : null,
       nextMatchId: right ? matchId(right[0]) : null,
       nextSlot: right ? slot(right[1]) : null,
       loserNextMatchId: down ? matchId(down[0]) : null,
@@ -301,6 +313,10 @@ export async function generateRoundRobinSchedule(tournamentId: string, teams: St
         round, position: position + 1,
         teamAId: rotation[position].id,
         teamBId: rotation[rotation.length - 1 - position].id,
+        teamAName: rotation[position].name,
+        teamBName: rotation[rotation.length - 1 - position].name,
+        teamAColor: rotation[position].color,
+        teamBColor: rotation[rotation.length - 1 - position].color,
         scoreA: null, scoreB: null, winnerId: null, nextMatchId: null, nextSlot: null,
         updatedAt: serverTimestamp(),
       })
@@ -323,17 +339,33 @@ export async function recordMatchResult(tournamentId: string, matchId: string, s
     const match = { id: snapshot.id, ...snapshot.data() } as TournamentMatch
     if (!match.teamAId || !match.teamBId) throw new Error('Both teams must be set before scoring.')
     const winnerId = scoreA > scoreB ? match.teamAId : match.teamBId
+    const winnerIsA = winnerId === match.teamAId
+    const winner = {
+      id: winnerId,
+      name: winnerIsA ? match.teamAName || null : match.teamBName || null,
+      color: winnerIsA ? match.teamAColor || null : match.teamBColor || null,
+    }
+    const loser = {
+      id: winnerIsA ? match.teamBId : match.teamAId,
+      name: winnerIsA ? match.teamBName || null : match.teamAName || null,
+      color: winnerIsA ? match.teamBColor || null : match.teamAColor || null,
+    }
+    const assignment = (slot: 'teamAId' | 'teamBId', entrant: { id: string; name: string | null; color: string | null }) => ({
+      [slot]: entrant.id,
+      [slot === 'teamAId' ? 'teamAName' : 'teamBName']: entrant.name,
+      [slot === 'teamAId' ? 'teamAColor' : 'teamBColor']: entrant.color,
+      updatedAt: serverTimestamp(),
+    })
     transaction.update(matchRef, { scoreA, scoreB, winnerId, updatedAt: serverTimestamp() })
-    const loserId = winnerId === match.teamAId ? match.teamBId : match.teamAId
     if (match.requiresResetOnLowerWinner && match.nextMatchId && match.nextSlot && match.loserNextMatchId && match.loserNextSlot) {
       // The upper-bracket finalist is in team A. A reset is only needed if the
       // lower-bracket finalist wins this first championship match.
       if (winnerId !== match.teamAId) {
-        transaction.update(doc(matchesRef(tournamentId), match.nextMatchId), { [match.nextSlot]: winnerId, [match.loserNextSlot]: loserId, updatedAt: serverTimestamp() })
+        transaction.update(doc(matchesRef(tournamentId), match.nextMatchId), { ...assignment(match.nextSlot, winner), ...assignment(match.loserNextSlot, loser) })
       }
     } else {
-      if (match.nextMatchId && match.nextSlot) transaction.update(doc(matchesRef(tournamentId), match.nextMatchId), { [match.nextSlot]: winnerId, updatedAt: serverTimestamp() })
-      if (match.loserNextMatchId && match.loserNextSlot) transaction.update(doc(matchesRef(tournamentId), match.loserNextMatchId), { [match.loserNextSlot]: loserId, updatedAt: serverTimestamp() })
+      if (match.nextMatchId && match.nextSlot) transaction.update(doc(matchesRef(tournamentId), match.nextMatchId), assignment(match.nextSlot, winner))
+      if (match.loserNextMatchId && match.loserNextSlot) transaction.update(doc(matchesRef(tournamentId), match.loserNextMatchId), assignment(match.loserNextSlot, loser))
     }
   })
 }
