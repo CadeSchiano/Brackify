@@ -229,11 +229,19 @@ export type TournamentMatch = {
 
 const matchesRef = (tournamentId: string) => collection(db, 'tournaments', tournamentId, 'matches')
 
+async function clearExistingSchedule(tournamentId: string) {
+  const existingMatches = await getDocs(matchesRef(tournamentId))
+  const batch = writeBatch(db)
+  existingMatches.docs.forEach(match => batch.delete(match.ref))
+  if (existingMatches.size) await batch.commit()
+}
+
 export async function generateSingleEliminationBracket(tournamentId: string, teams: StoredTeam[]) {
   if (teams.length < 2) throw new Error('Single elimination requires at least two teams.')
   const bracketSize = 2 ** Math.ceil(Math.log2(teams.length))
   const rounds = Math.log2(bracketSize)
   const slots = [...teams, ...Array(bracketSize - teams.length).fill(null)]
+  await clearExistingSchedule(tournamentId)
   const batch = writeBatch(db)
   const byeAdvances = new Map<string, Partial<TournamentMatch>>()
   for (let round = 1; round <= rounds; round += 1) {
@@ -268,6 +276,7 @@ export async function generateSingleEliminationBracket(tournamentId: string, tea
 
 export async function generateDoubleEliminationBracket(tournamentId: string, teams: StoredTeam[]) {
   if (teams.length < 2) throw new Error('Double elimination requires at least two teams.')
+  await clearExistingSchedule(tournamentId)
   const batch = writeBatch(db)
   const write = (id: string, data: Partial<TournamentMatch>) => batch.set(doc(matchesRef(tournamentId), id), { scoreA: null, scoreB: null, winnerId: null, nextMatchId: null, nextSlot: null, loserNextMatchId: null, loserNextSlot: null, updatedAt: serverTimestamp(), ...data })
   if (teams.length === 2) {
@@ -305,6 +314,7 @@ export async function generateDoubleEliminationBracket(tournamentId: string, tea
 export async function generateRoundRobinSchedule(tournamentId: string, teams: StoredTeam[]) {
   if (teams.length < 2 || teams.length % 2 !== 0) throw new Error('Round robin requires an even number of teams.')
   const rotation = [...teams]
+  await clearExistingSchedule(tournamentId)
   const batch = writeBatch(db)
   for (let round = 1; round < teams.length; round += 1) {
     for (let position = 0; position < teams.length / 2; position += 1) {
