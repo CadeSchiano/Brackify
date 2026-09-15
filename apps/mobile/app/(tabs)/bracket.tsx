@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useRouter } from "expo-router";
 import {
   Alert,
   Modal,
@@ -21,6 +22,7 @@ import { palette, ScreenTitle, TeamMark } from "../../components";
 import { useTournamentData } from "../../tournament-data";
 
 export default function BracketScreen() {
+  const router = useRouter();
   const { tournament, teams, matches, loading } = useTournamentData();
   const [selected, setSelected] = useState<TournamentMatch | null>(null);
   const [a, setA] = useState("0");
@@ -42,6 +44,9 @@ export default function BracketScreen() {
         <Text style={s.emptyCopy}>
           Your bracket will appear after you join or create a tournament.
         </Text>
+        <Pressable style={s.primary} onPress={() => router.replace("/")}>
+          <Text style={s.primaryText}>Create or join a tournament</Text>
+        </Pressable>
       </View>
     );
   const generate = async () => {
