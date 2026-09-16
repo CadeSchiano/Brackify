@@ -24,6 +24,7 @@ import {
   type StoredTournament,
 } from "@brackify/firebase";
 import { auth } from "../../firebase/client";
+import { signOut } from "firebase/auth";
 import { uploadMobileTournamentImage } from "../../cloudinary";
 
 export default function HomeScreen() {
@@ -44,6 +45,12 @@ export default function HomeScreen() {
   const [joinError, setJoinError] = useState("");
   const [sharing, setSharing] = useState(false);
   const [editing, setEditing] = useState(false);
+  const guest = Boolean(auth.currentUser?.isAnonymous);
+  const requireAccount = () => Alert.alert(
+    "Create an account to organize",
+    "Guests can join and follow tournaments. Create an account to make or manage one.",
+    [{ text: "Not now", style: "cancel" }, { text: "Create account", onPress: () => { void signOut(auth); router.replace('/(auth)'); } }],
+  );
   const nextMatch = matches.find(
     (match) => match.teamAId && match.teamBId && !match.winnerId,
   );
@@ -75,9 +82,9 @@ export default function HomeScreen() {
         <Ionicons name="trophy-outline" size={32} color="#5263F5" />
         <Text style={styles.emptyTitle}>No tournament yet</Text>
         <Text style={styles.emptyCopy}>
-          Create your own tournament or join one with an invite code.
+          {guest ? "Join a tournament with an invite code, or create an account to organize one." : "Create your own tournament or join one with an invite code."}
         </Text>
-        <Pressable style={styles.joinButton} onPress={() => setCreating(true)}>
+        <Pressable style={styles.joinButton} onPress={() => guest ? requireAccount() : setCreating(true)}>
           <Text style={styles.joinButtonText}>Create tournament</Text>
         </Pressable>
         <Pressable onPress={() => setJoining(true)}>
@@ -115,12 +122,12 @@ export default function HomeScreen() {
               <Ionicons name="create-outline" color="#5263F5" size={18} />
             </Pressable>
           )}
-          <Pressable
+          {!guest && <Pressable
             style={styles.createIcon}
             onPress={() => setCreating(true)}
           >
             <Ionicons name="add" color="#FFF" size={20} />
-          </Pressable>
+          </Pressable>}
           <View style={styles.avatar}>
             <Text>{authInitials()}</Text>
           </View>

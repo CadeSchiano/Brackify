@@ -10,7 +10,7 @@ export default function RootLayout() {
   const router = useRouter()
   const [ready, setReady] = useState(false)
   const [signedIn, setSignedIn] = useState(false)
-  useEffect(() => onAuthStateChanged(auth, user => { if (user) void ensureUserProfile(user).catch(error => console.warn('Could not create the user profile.', error)); setSignedIn(Boolean(user)); setReady(true) }), [])
+  useEffect(() => onAuthStateChanged(auth, user => { if (user && !user.isAnonymous) void ensureUserProfile(user).catch(error => console.warn('Could not create the user profile.', error)); setSignedIn(Boolean(user)); setReady(true) }), [])
   useEffect(() => {
     if (ready) router.replace(signedIn ? '/(tabs)' : '/(auth)')
   }, [ready, signedIn, router])
