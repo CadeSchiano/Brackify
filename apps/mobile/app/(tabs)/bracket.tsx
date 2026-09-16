@@ -14,6 +14,7 @@ import {
   generateDoubleEliminationBracket,
   generateRoundRobinSchedule,
   generateSingleEliminationBracket,
+  getTournamentMatches,
   recordMatchResult,
   type TournamentMatch,
 } from "@brackify/firebase";
@@ -23,7 +24,7 @@ import { useTournamentData } from "../../tournament-data";
 
 export default function BracketScreen() {
   const router = useRouter();
-  const { tournament, teams, matches, loading } = useTournamentData();
+  const { tournament, teams, matches, loading, replaceMatches } = useTournamentData();
   const [selected, setSelected] = useState<TournamentMatch | null>(null);
   const [a, setA] = useState("0");
   const [b, setB] = useState("0");
@@ -64,6 +65,9 @@ export default function BracketScreen() {
       else if (tournament.format === "Double elimination")
         await generateDoubleEliminationBracket(tournament.id, data);
       else await generateSingleEliminationBracket(tournament.id, data);
+      // Firestore's background listener can take a moment in release builds.
+      // Read the completed schedule now so the bracket appears immediately.
+      replaceMatches(await getTournamentMatches(tournament.id));
     } catch (error) {
       Alert.alert(
         "Could not generate bracket",
@@ -81,6 +85,7 @@ export default function BracketScreen() {
     setBusy(true);
     try {
       await recordMatchResult(tournament.id, selected.id, scoreA, scoreB);
+      replaceMatches(await getTournamentMatches(tournament.id));
       setSelected(null);
     } catch (error) {
       Alert.alert(

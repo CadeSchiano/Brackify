@@ -336,8 +336,18 @@ export async function generateRoundRobinSchedule(tournamentId: string, teams: St
   await batch.commit()
 }
 
+function readMatches(snapshot: { docs: Array<{ id: string; data: () => Record<string, unknown> }> }) {
+  return snapshot.docs
+    .map(item => ({ id: item.id, ...item.data() }) as TournamentMatch)
+    .sort((a, b) => a.round - b.round || a.position - b.position)
+}
+
+export async function getTournamentMatches(tournamentId: string) {
+  return readMatches(await getDocs(matchesRef(tournamentId)))
+}
+
 export function subscribeToMatches(tournamentId: string, onChange: (matches: TournamentMatch[]) => void) {
-  return onSnapshot(matchesRef(tournamentId), snapshot => onChange(snapshot.docs.map(item => ({ id: item.id, ...item.data() }) as TournamentMatch).sort((a, b) => a.round - b.round || a.position - b.position)))
+  return onSnapshot(matchesRef(tournamentId), snapshot => onChange(readMatches(snapshot)))
 }
 
 export async function recordMatchResult(tournamentId: string, matchId: string, scoreA: number, scoreB: number) {

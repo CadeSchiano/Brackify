@@ -11,9 +11,10 @@ type TournamentData = {
   loading: boolean
   selectTournament: (tournamentId: string) => void
   replaceTeams: (teams: StoredTeam[]) => void
+  replaceMatches: (matches: TournamentMatch[]) => void
 }
 
-const TournamentContext = createContext<TournamentData>({ tournaments: [], tournament: null, teams: [], players: [], matches: [], loading: true, selectTournament: () => undefined, replaceTeams: () => undefined })
+const TournamentContext = createContext<TournamentData>({ tournaments: [], tournament: null, teams: [], players: [], matches: [], loading: true, selectTournament: () => undefined, replaceTeams: () => undefined, replaceMatches: () => undefined })
 
 export function TournamentProvider({ children }: { children: ReactNode }) {
   const [tournaments, setTournaments] = useState<StoredTournament[]>([])
@@ -53,7 +54,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     void seedTournamentPlayers(tournament.id, tournament.playerNames).then(() => updateTournament(tournament.id, { rosterInitialized: true }))
   }, [tournament?.id, tournament?.organizerId, tournament?.playerNames?.join('|'), tournament?.rosterInitialized, players.length])
 
-  const value = useMemo(() => ({ tournaments, tournament, teams, players, matches, loading, selectTournament: setSelectedTournamentId, replaceTeams: setTeams }), [tournaments, tournament, teams, players, matches, loading])
+  const value = useMemo(() => ({ tournaments, tournament, teams, players, matches, loading, selectTournament: setSelectedTournamentId, replaceTeams: setTeams, replaceMatches: setMatches }), [tournaments, tournament, teams, players, matches, loading])
   return <TournamentContext.Provider value={value}>{children}</TournamentContext.Provider>
 }
 
