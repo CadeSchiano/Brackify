@@ -532,6 +532,7 @@ function CreateTournamentModal({
       .filter(Boolean);
     if (!user || !name.trim() || names.length < 2)
       return setError("Add a tournament name and at least two player names.");
+    const maxTeams = Math.max(2, Math.min(names.length, Number(teamCount) || 2));
     setSaving(true);
     setError("");
     try {
@@ -543,7 +544,7 @@ function CreateTournamentModal({
         date: date.trim(),
         format,
         visibility: "private",
-        maxTeams: teamCount,
+        maxTeams,
         playerNames: names,
       });
       onCreated(tournament.id);
@@ -619,28 +620,15 @@ function CreateTournamentModal({
               </Pressable>
             ))}
           </View>
-          <Text style={styles.fieldLabel}>Teams</Text>
-          <View style={styles.choiceRow}>
-            {[2, 4, 8].map((value) => (
-              <Pressable
-                key={value}
-                style={[
-                  styles.choice,
-                  teamCount === value && styles.choiceSelected,
-                ]}
-                onPress={() => setTeamCount(value)}
-              >
-                <Text
-                  style={[
-                    styles.choiceText,
-                    teamCount === value && styles.choiceTextSelected,
-                  ]}
-                >
-                  {value}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <Text style={styles.fieldLabel}>Number of teams</Text>
+          <TextInput
+            style={styles.fieldInput}
+            value={String(teamCount)}
+            onChangeText={(value) => setTeamCount(Number(value.replace(/\D/g, "")) || 2)}
+            keyboardType="number-pad"
+            maxLength={3}
+          />
+          <Text style={styles.fieldHint}>Choose any number up to your player count. Uneven teams are okay.</Text>
           <TextInput
             style={[styles.fieldInput, styles.playersInput]}
             value={players}
@@ -946,6 +934,7 @@ Object.assign(
       fontSize: 12,
       fontWeight: "700",
     },
+    fieldHint: { color: palette.muted, fontSize: 11, lineHeight: 16, marginTop: 6 },
     choiceRow: { flexDirection: "row", gap: 7, marginTop: 8 },
     choice: {
       flex: 1,

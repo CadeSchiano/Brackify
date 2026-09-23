@@ -83,6 +83,8 @@ export default function TeamsScreen() {
   const [playersPerTeam, setPlayersPerTeam] = useState("4");
   const [nameCategory, setNameCategory] = useState("Animals");
   const [colorTeam, setColorTeam] = useState<StoredTeam | null>(null);
+  const [manualTeams, setManualTeams] = useState<StoredTeam[]>([]);
+  const [manualAssignments, setManualAssignments] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!tournament) return;
     setTeamCount(tournament.maxTeams);
@@ -104,13 +106,14 @@ export default function TeamsScreen() {
       </View>
     );
   const organizer = auth.currentUser?.uid === tournament.organizerId;
-  const generatedTeamCount =
+  const requestedTeamCount =
     generationMode === "teamSize"
       ? Math.max(
           2,
           Math.ceil(players.length / Math.max(1, Number(playersPerTeam) || 1)),
         )
-      : teamCount;
+      : Math.max(2, Number(teamCount) || 2);
+  const generatedTeamCount = Math.min(players.length || 2, requestedTeamCount);
   const generate = async () => {
     if (players.length < 2)
       return Alert.alert(
@@ -144,6 +147,41 @@ export default function TeamsScreen() {
         "Could not save teams",
         error instanceof Error ? error.message : "Please try again.",
       );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const startManualTeams = () => {
+    if (players.length < 2)
+      return Alert.alert("Add players first", "Add at least two players before making teams.");
+    const count = Math.max(2, Math.min(players.length, Number(teamCount) || 2));
+    setManualTeams(Array.from({ length: count }, (_, index) => ({
+      id: `team-${index + 1}`,
+      name: `Team ${index + 1}`,
+      color: colors[index % colors.length],
+      playerIds: [],
+    })));
+    setManualAssignments(Object.fromEntries(players.map((player) => [player.id, ""])));
+    setShowSetup(false);
+  };
+  const saveManualTeams = async () => {
+    if (players.some((player) => !manualAssignments[player.id]))
+      return Alert.alert("Assign every player", "Choose a team for every player before saving.");
+    const saved = manualTeams.map((team) => ({
+      ...team,
+      name: team.name.trim() || "Untitled team",
+      playerIds: players.filter((player) => manualAssignments[player.id] === team.id).map((player) => player.id),
+    })).filter((team) => team.playerIds.length);
+    if (saved.length < 2)
+      return Alert.alert("Make at least two teams", "Put players on at least two teams before saving.");
+    setBusy(true);
+    try {
+      await saveTeams(tournament.id, saved);
+      replaceTeams(saved);
+      setManualTeams([]);
+      setFeedback(`${saved.length} custom teams saved and synced.`);
+    } catch (error) {
+      Alert.alert("Could not save teams", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setBusy(false);
     }
@@ -206,7 +244,7 @@ export default function TeamsScreen() {
         <Text style={s.subtitle}>{tournament.name}</Text>
       </ScreenTitle>
       {organizer && teams.length > 0 && !showSetup && <Pressable style={[s.primary, { marginHorizontal: 20, marginBottom: 14 }]} onPress={() => setShowSetup(true)}><Ionicons name="shuffle" size={15} color="#FFF"/><Text style={s.primaryText}>Generate new teams</Text></Pressable>}
-      {organizer && (showSetup || !teams.length) && (
+      {organizer && !manualTeams.length && (showSetup || !teams.length) && (
         <View style={s.actions}>
           <View style={s.generationPanel}>
             <Text style={s.generationTitle}>Make random teams by</Text>
@@ -247,25 +285,18 @@ export default function TeamsScreen() {
             </View>
             {generationMode === "teamCount" ? (
               <View style={s.countRow}>
-                {[2, 4, 6, 8].map((count) => (
-                  <Pressable
-                    key={count}
-                    style={[
-                      s.countButton,
-                      teamCount === count && s.countButtonActive,
-                    ]}
-                    onPress={() => setTeamCount(count)}
-                  >
-                    <Text
-                      style={[
-                        s.countText,
-                        teamCount === count && s.countTextActive,
-                      ]}
-                    >
-                      {count}
-                    </Text>
-                  </Pressable>
-                ))}
+                <TextInput
+                  style={s.sizeInput}
+                  value={String(teamCount)}
+                  onChangeText={(value) => setTeamCount(Number(value.replace(/\D/g, "")) || 2)}
+                  keyboardType="number-pad"
+                  maxLength={3}
+                />
+                <Text style={s.sizeCopy}>
+                  {players.length
+                    ? `${generatedTeamCount} teams will be made from ${players.length} players. Uneven teams are okay.`
+                    : "Add players to preview teams."}
+                </Text>
               </View>
             ) : (
               <View style={s.sizeRow}>
@@ -294,6 +325,10 @@ export default function TeamsScreen() {
               {teams.length ? "Randomize teams again" : "Generate random teams"}
             </Text>
           </Pressable>
+          <Pressable style={s.manualButton} onPress={startManualTeams} disabled={busy}>
+            <Ionicons name="people-outline" size={16} color={palette.purple} />
+            <Text style={s.manualButtonText}>Make teams myself</Text>
+          </Pressable>
           {teams.length > 0 && <Pressable style={{ alignItems: "center", padding: 8 }} onPress={() => Alert.alert("Delete teams?", "This removes team assignments but keeps your player roster.", [{ text: "Cancel", style: "cancel" }, { text: "Delete", style: "destructive", onPress: () => deleteTournamentTeams(tournament.id).then(() => replaceTeams([])).catch(error => Alert.alert("Could not delete teams", error instanceof Error ? error.message : "Please try again.")) }])}><Text style={{ color: "#C44955", fontSize: 12, fontWeight: "700" }}>Delete teams</Text></Pressable>}
           <View style={s.addRow}>
             <TextInput
@@ -313,7 +348,7 @@ export default function TeamsScreen() {
           {feedback ? <Text style={s.feedback}>{feedback}</Text> : null}
         </View>
       )}
-      {(showSetup || !teams.length) && <View style={s.roster}>
+      {!manualTeams.length && (showSetup || !teams.length) && <View style={s.roster}>
         <View style={s.rosterHead}>
           <View>
             <Text style={s.rosterTitle}>Shared roster</Text>
@@ -358,7 +393,44 @@ export default function TeamsScreen() {
           </Text>
         )}
       </View>}
-      {teams.length ? (
+      {manualTeams.length ? (
+        <View style={s.manualBuilder}>
+          <Text style={s.manualTitle}>Make teams myself</Text>
+          <Text style={s.manualCopy}>Name your teams, then tap a team for every player.</Text>
+          {manualTeams.map((team) => (
+            <View style={s.manualTeamRow} key={team.id}>
+              <TextInput
+                style={s.manualNameInput}
+                value={team.name}
+                onChangeText={(name) => setManualTeams((current) => current.map((item) => item.id === team.id ? { ...item, name } : item))}
+                placeholder="Team name"
+                placeholderTextColor="#9AA4B2"
+              />
+              <View style={[s.manualColor, { backgroundColor: team.color }]} />
+            </View>
+          ))}
+          <View style={s.manualRoster}>
+            {players.map((player) => (
+              <View key={player.id} style={s.manualPlayerRow}>
+                <Text style={s.manualPlayerName}>{player.name}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.manualChoices}>
+                  {manualTeams.map((team) => {
+                    const selected = manualAssignments[player.id] === team.id;
+                    return <Pressable key={team.id} style={[s.manualChoice, selected && { backgroundColor: team.color, borderColor: team.color }]} onPress={() => setManualAssignments((current) => ({ ...current, [player.id]: team.id }))}>
+                      <Text style={[s.manualChoiceText, selected && { color: palette.ink }]}>{team.name || "Team"}</Text>
+                    </Pressable>;
+                  })}
+                </ScrollView>
+              </View>
+            ))}
+          </View>
+          <Pressable style={[s.primary, busy && s.disabled]} disabled={busy} onPress={saveManualTeams}>
+            <Ionicons name="checkmark-circle-outline" size={17} color="#FFF" />
+            <Text style={s.primaryText}>{busy ? "Saving…" : "Save custom teams"}</Text>
+          </Pressable>
+          <Pressable onPress={() => setManualTeams([])}><Text style={s.cancelManual}>Cancel</Text></Pressable>
+        </View>
+      ) : teams.length ? (
         teams.map((team) => (
           <Pressable key={team.id} style={s.card} onPress={() => organizer && editTeam(team)}>
             <TeamMark
@@ -574,5 +646,20 @@ Object.assign(
       fontWeight: "700",
     },
     sizeCopy: { flex: 1, color: palette.muted, fontSize: 10, lineHeight: 14 },
+    manualButton: { minHeight: 43, borderWidth: 1, borderColor: palette.purple, borderRadius: 9, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+    manualButtonText: { color: palette.purple, fontSize: 13, fontWeight: "800" },
+    manualBuilder: { marginHorizontal: 20, marginBottom: 16, padding: 14, backgroundColor: "#FFF", borderWidth: 1, borderColor: palette.line, borderRadius: 11, gap: 10 },
+    manualTitle: { color: palette.ink, fontSize: 17, fontWeight: "800" },
+    manualCopy: { color: palette.muted, fontSize: 11, lineHeight: 16 },
+    manualTeamRow: { flexDirection: "row", alignItems: "center", gap: 9 },
+    manualNameInput: { flex: 1, height: 40, borderWidth: 1, borderColor: palette.line, borderRadius: 8, paddingHorizontal: 10, color: palette.ink, fontSize: 12, fontWeight: "700" },
+    manualColor: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: "#FFF", shadowColor: "#172031", shadowOpacity: .12, shadowRadius: 3 },
+    manualRoster: { borderTopWidth: 1, borderColor: "#EEF0F4", marginTop: 3 },
+    manualPlayerRow: { paddingVertical: 10, borderBottomWidth: 1, borderColor: "#EEF0F4", gap: 7 },
+    manualPlayerName: { color: palette.ink, fontSize: 12, fontWeight: "800" },
+    manualChoices: { gap: 6 },
+    manualChoice: { minHeight: 31, borderRadius: 16, borderWidth: 1, borderColor: palette.line, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
+    manualChoiceText: { color: palette.muted, fontSize: 10, fontWeight: "800" },
+    cancelManual: { color: palette.purple, textAlign: "center", fontSize: 12, fontWeight: "800", paddingTop: 2 },
   }),
 );
